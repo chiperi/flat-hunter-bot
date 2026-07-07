@@ -187,6 +187,16 @@ Settings → Secrets and variables → Actions → **New repository secret**:
 | `ALLOWED_USER_IDS` | ✅ | Comma-separated allowed Telegram ids — same injection |
 | `HTTP_PROXY_URL` | — | Outbound proxy for the scraper, if the droplet IP is blocked |
 
+Set them all in one go with the helper (values stay on your machine — nothing is
+printed or written to history):
+
+```bash
+brew install gh && gh auth login      # one time
+./scripts/set-github-secrets.sh
+```
+
+Or add each manually in the GitHub UI (link above).
+
 ### One-time droplet setup
 
 ```bash
