@@ -6,11 +6,12 @@
 #   - dedicated named volume (olx-redis-data)
 #   - NO ports published to the host (the bot only makes outbound calls)
 #
-# Deploy pattern (same as aurora):
-#   ssh droplet
-#   mkdir -p /opt/olx-bot && cd /opt/olx-bot
-#   # copy this repo + a populated .env here
-#   docker compose up -d --build
+# Secrets are NOT stored on the droplet. There is no `.env` file here in
+# production — the CI/CD deploy injects TELEGRAM_BOT_TOKEN / ALLOWED_USER_IDS /
+# HTTP_PROXY_URL into the deploy shell (over SSH), and the pass-through entries
+# below hand them to the container at `up` time. For LOCAL dev you can still put
+# those in a gitignored `.env` (Compose auto-loads it for interpolation) or
+# export them in your shell.
 
 services:
   app:
@@ -18,10 +19,24 @@ services:
     image: olx-hunter-bot:latest
     container_name: olx-bot-app
     restart: unless-stopped
-    env_file: .env
     environment:
       # Talk to the redis service by its compose name, on the private network.
-      REDIS_URL: redis://redis:6379
+      - REDIS_URL=redis://redis:6379
+      # Non-secret operational config (overridable via the deploy shell env).
+      - REDIS_KEY_PREFIX=${REDIS_KEY_PREFIX:-olx}
+      - SCRAPER=${SCRAPER:-http}
+      - POLL_INTERVAL_MS=${POLL_INTERVAL_MS:-300000}
+      - POLL_JITTER_MS=${POLL_JITTER_MS:-60000}
+      - OLX_BASE_URL=${OLX_BASE_URL:-https://www.olx.ua}
+      - OLX_CATEGORY_PATH=${OLX_CATEGORY_PATH:-uk/nedvizhimost/kvartiry}
+      - SCRAPER_TIMEOUT_MS=${SCRAPER_TIMEOUT_MS:-15000}
+      - SCRAPER_MAX_RETRIES=${SCRAPER_MAX_RETRIES:-3}
+      - LOG_LEVEL=${LOG_LEVEL:-log}
+      # Secrets — passed THROUGH from the deploy shell, never written to a file.
+      # (Bare name = "take from the host environment".)
+      - TELEGRAM_BOT_TOKEN
+      - ALLOWED_USER_IDS
+      - HTTP_PROXY_URL
     depends_on:
       redis:
         condition: service_healthy

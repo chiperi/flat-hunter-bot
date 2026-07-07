@@ -84,14 +84,21 @@ jobs:
       - name: Build & restart on droplet
         run: |
           PORT="${SSH_PORT:-22}"
+          # Secrets are substituted by GitHub Actions (masked in logs) and travel
+          # to the droplet over the encrypted SSH channel via stdin — NOT as
+          # command-line args (so they never appear in `ps`) and NOT to any file.
+          # They live only in this remote bash process' env, from which Compose
+          # hands them to the container at `up`. No .env is ever written.
           ssh -p "$PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
           cd /opt/olx-bot
 
-          if [ ! -f .env ]; then
-            echo "::error::/opt/olx-bot/.env is missing on the droplet. Create it once from .env.example, then re-run this deploy."
-            exit 1
-          fi
+          # Purge any legacy plaintext secrets file left from an earlier setup.
+          rm -f .env
+
+          export TELEGRAM_BOT_TOKEN='${{ secrets.TELEGRAM_BOT_TOKEN }}'
+          export ALLOWED_USER_IDS='${{ secrets.ALLOWED_USER_IDS }}'
+          export HTTP_PROXY_URL='${{ secrets.HTTP_PROXY_URL }}'
 
           # Prefer the Docker Compose v2 plugin; fall back to legacy docker-compose.
           if docker compose version >/dev/null 2>&1; then

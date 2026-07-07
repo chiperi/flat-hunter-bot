@@ -128,31 +128,33 @@ getting (fake) notifications within a poll cycle.
 
 ---
 
-## Deployment — first-time bootstrap (manual, once)
+## Deployment
 
 Runs fully isolated under `/opt/olx-bot/`, separate from the existing `aurora`
 stack: its own Compose project, its own bridge network, its own Redis volume,
 **no published ports**.
 
-The **only** manual step is creating the droplet's `.env` once — after that,
-every push to `main` deploys automatically (see CI/CD below). CI never touches
-`.env`, so your secrets live only on the droplet.
+There is **no `.env` file on the droplet** and **no manual bootstrap step**.
+Secrets live only in GitHub Actions Secrets and are injected into the container
+at deploy time (see below). Just configure the secrets once and push to `main`.
 
-```bash
-ssh your-droplet
-mkdir -p /opt/olx-bot && cd /opt/olx-bot
+### Secrets stay off the droplet's disk
 
-# Create the .env once (CI syncs code but deliberately never overwrites it):
-curl -sO https://raw.githubusercontent.com/<you>/OLX-hunter-bot/main/.env.example
-mv .env.example .env
-nano .env            # fill in real values; SCRAPER=http for production
-```
+Instead of a plaintext `.env` sitting in `/opt/olx-bot/`, the deploy passes
+`TELEGRAM_BOT_TOKEN` / `ALLOWED_USER_IDS` / `HTTP_PROXY_URL` into the deploy
+shell over the encrypted SSH channel (via stdin — never as `ps`-visible args and
+never to a file), and Compose's pass-through `environment:` hands them to the
+container at `up`. The deploy also `rm -f`s any legacy `.env`.
 
-Updating the allowlist is an env edit + a restart on the droplet:
-```bash
-nano /opt/olx-bot/.env          # change ALLOWED_USER_IDS
-cd /opt/olx-bot && docker compose up -d
-```
+> **Caveat, stated honestly:** env vars given to a container are still recorded
+> by Docker in its container config on disk (`docker inspect`, root-only) — that
+> is inherent to any containerized env var. This design removes the standalone,
+> backup-prone `.env` file and centralizes rotation in GitHub; it does **not**
+> defend against a root-level compromise of the droplet. For that tier, use an
+> external secrets manager.
+
+Updating the allowlist = edit the `ALLOWED_USER_IDS` **GitHub secret** and re-run
+the deploy (Actions → Run workflow). No SSH, no file edit.
 (If the group turns over often, the allowlist can move into a Redis Set later —
 same infra, no redeploy. See `src/telegram/allowlist.middleware.ts`.)
 
@@ -181,6 +183,9 @@ Settings → Secrets and variables → Actions → **New repository secret**:
 | `DO_HOST` | ✅ | Droplet IP or hostname |
 | `DO_USER` | ✅ | SSH user (`root`, or a deploy user in the `docker` group) |
 | `DO_SSH_PORT` | — | SSH port if not `22` |
+| `TELEGRAM_BOT_TOKEN` | ✅ | Bot token — injected into the container at deploy, never stored on the droplet |
+| `ALLOWED_USER_IDS` | ✅ | Comma-separated allowed Telegram ids — same injection |
+| `HTTP_PROXY_URL` | — | Outbound proxy for the scraper, if the droplet IP is blocked |
 
 ### One-time droplet setup
 
@@ -195,9 +200,9 @@ ssh-copy-id -i ./olx_deploy_key.pub <user>@<droplet-host>
 # 3. Put the PRIVATE key into the DO_SSH_PRIVATE_KEY secret
 cat ./olx_deploy_key      # copy the whole output, incl. BEGIN/END lines
 
-# 4. Ensure the droplet has Docker + the Compose v2 plugin, and that
-#    /opt/olx-bot/.env exists (see bootstrap above). A non-root DO_USER must
-#    be able to run docker:  sudo usermod -aG docker <user>
+# 4. Ensure the droplet has Docker + the Compose v2 plugin. A non-root DO_USER
+#    must be able to run docker:  sudo usermod -aG docker <user>
+#    (No .env to create — the app secrets above are injected by the deploy.)
 ```
 
 Then push to `main` (or trigger **Actions → CI / Deploy → Run workflow**). Watch
