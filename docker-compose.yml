@@ -1,0 +1,70 @@
+# Flat Hunter Bot — isolated stack.
+#
+# Deployed on the shared DigitalOcean droplet under /opt/flat-hunter-bot/, fully
+# separate from the existing `aurora` project:
+#   - dedicated bridge network (flat-hunter-net)
+#   - dedicated named volume (flat-hunter-redis-data)
+#   - NO ports published to the host (the bot only makes outbound calls)
+#
+# Secrets are NOT stored on the droplet. There is no `.env` file here in
+# production — the CI/CD deploy injects TELEGRAM_BOT_TOKEN / ALLOWED_USER_IDS /
+# HTTP_PROXY_URL into the deploy shell (over SSH), and the pass-through entries
+# below hand them to the container at `up` time. For LOCAL dev you can still put
+# those in a gitignored `.env` (Compose auto-loads it for interpolation) or
+# export them in your shell.
+
+services:
+  app:
+    build: .
+    image: flat-hunter-bot:latest
+    container_name: flat-hunter-app
+    restart: unless-stopped
+    environment:
+      # Talk to the redis service by its compose name, on the private network.
+      - REDIS_URL=redis://redis:6379
+      # Non-secret operational config (overridable via the deploy shell env).
+      - REDIS_KEY_PREFIX=${REDIS_KEY_PREFIX:-olx}
+      - SCRAPER=${SCRAPER:-http}
+      - SOURCES=${SOURCES:-olx,rieltor,domria,lun,flatfy,birdrent,josti}
+      - POLL_INTERVAL_MS=${POLL_INTERVAL_MS:-300000}
+      - POLL_JITTER_MS=${POLL_JITTER_MS:-60000}
+      - OLX_BASE_URL=${OLX_BASE_URL:-https://www.olx.ua}
+      - OLX_CATEGORY_PATH=${OLX_CATEGORY_PATH:-uk/nedvizhimost/kvartiry}
+      - SCRAPER_TIMEOUT_MS=${SCRAPER_TIMEOUT_MS:-15000}
+      - SCRAPER_MAX_RETRIES=${SCRAPER_MAX_RETRIES:-3}
+      - LOG_LEVEL=${LOG_LEVEL:-log}
+      # Secrets — passed THROUGH from the deploy shell, never written to a file.
+      # (Bare name = "take from the host environment".)
+      - TELEGRAM_BOT_TOKEN
+      - ALLOWED_USER_IDS
+      - HTTP_PROXY_URL
+      - DOMRIA_API_KEY
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - flat-hunter-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: flat-hunter-redis
+    restart: unless-stopped
+    # Persist dedup state + profiles across restarts (append-only file).
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - flat-hunter-redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - flat-hunter-net
+
+networks:
+  flat-hunter-net:
+    driver: bridge
+
+volumes:
+  flat-hunter-redis-data:
+    driver: local

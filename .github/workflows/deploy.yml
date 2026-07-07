@@ -1,0 +1,147 @@
+name: CI / Deploy
+
+# Build/typecheck on every PR and push; deploy to the DigitalOcean droplet only
+# on a push to main (or a manual run). No container registry — the droplet builds
+# the image itself, exactly like the existing `aurora` deploy pattern.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# The workflow only reads the repo and deploys over SSH — no need for a
+# write-capable GITHUB_TOKEN.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build & typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile (tsc via nest build)
+        run: npm run build
+
+  deploy:
+    name: Deploy to droplet
+    needs: build
+    # Never deploy from a pull request; only on push to main or a manual dispatch.
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    # Optional: add protection rules / required reviewers to this environment in
+    # the repo settings. Environment-scoped secrets also work here.
+    environment: production
+    # Serialize deploys so two pushes can't build/restart on the droplet at once.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      SSH_HOST: ${{ secrets.DO_FLAT_HUNTER_HOST }}
+      SSH_USER: ${{ secrets.DO_FLAT_HUNTER_USER }}
+      SSH_PORT: ${{ secrets.DO_FLAT_HUNTER_SSH_PORT }}
+      DEPLOY_PATH: /opt/flat-hunter-bot
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DO_FLAT_HUNTER_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          PORT="${SSH_PORT:-22}"
+          ssh-keyscan -p "$PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          # Make sure the target dir exists before we sync into it.
+          ssh -p "$PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" "mkdir -p $DEPLOY_PATH"
+
+      - name: Sync source to droplet
+        run: |
+          PORT="${SSH_PORT:-22}"
+          # --delete keeps the droplet dir in sync with the repo, but every
+          # exclude below is ALSO protected from deletion — so the operator's
+          # secrets (.env) and any local override survive untouched.
+          rsync -az --delete \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='node_modules' \
+            --exclude='dist' \
+            --exclude='.env' \
+            --exclude='docker-compose.override.yml' \
+            -e "ssh -p $PORT -i ~/.ssh/deploy_key" \
+            ./ "$SSH_USER@$SSH_HOST:$DEPLOY_PATH/"
+
+      - name: Build & restart on droplet
+        run: |
+          PORT="${SSH_PORT:-22}"
+          # Secrets are substituted by GitHub Actions (masked in logs) and travel
+          # to the droplet over the encrypted SSH channel via stdin — NOT as
+          # command-line args (so they never appear in `ps`) and NOT to any file.
+          # They live only in this remote bash process' env, from which Compose
+          # hands them to the container at `up`. No .env is ever written.
+          ssh -p "$PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          cd /opt/flat-hunter-bot
+
+          # Purge any legacy plaintext secrets file left from an earlier setup.
+          rm -f .env
+
+          export TELEGRAM_BOT_TOKEN='${{ secrets.FLAT_HUNTER_TELEGRAM_BOT_TOKEN }}'
+          export ALLOWED_USER_IDS='${{ secrets.FLAT_HUNTER_ALLOWED_USER_IDS }}'
+          export HTTP_PROXY_URL='${{ secrets.FLAT_HUNTER_HTTP_PROXY_URL }}'
+          export DOMRIA_API_KEY='${{ secrets.FLAT_HUNTER_DOMRIA_API_KEY }}'
+
+          # Runtime mode/config — SAFE DEFAULTS (mock, single source, 10-min poll).
+          # Flip to real scraping later WITHOUT a code change by setting repo
+          # Variables (Settings -> Secrets and variables -> Actions -> Variables):
+          #   SCRAPER=http   SOURCES=olx,domria   POLL_INTERVAL_MS=600000
+          export SCRAPER='${{ vars.SCRAPER || 'mock' }}'
+          export SOURCES='${{ vars.SOURCES || 'olx' }}'
+          export POLL_INTERVAL_MS='${{ vars.POLL_INTERVAL_MS || '600000' }}'
+
+          # Prefer the Docker Compose v2 plugin; fall back to legacy docker-compose.
+          if docker compose version >/dev/null 2>&1; then
+            DC="docker compose"
+          else
+            DC="docker-compose"
+          fi
+
+          echo "Building and (re)starting the stack..."
+          $DC up -d --build --remove-orphans
+
+          echo "Current state:"
+          $DC ps
+
+          # Reclaim space from the previous image build.
+          docker image prune -f >/dev/null 2>&1 || true
+          REMOTE
+
+      - name: Post-deploy health check
+        run: |
+          PORT="${SSH_PORT:-22}"
+          # Give the app a moment to boot, then confirm the container didn't
+          # crash-loop on startup (e.g. bad token / missing env).
+          sleep 8
+          ssh -p "$PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          cd /opt/flat-hunter-bot
+          if docker compose version >/dev/null 2>&1; then DC="docker compose"; else DC="docker-compose"; fi
+          state="$($DC ps --format '{{.Service}} {{.State}}' 2>/dev/null || true)"
+          echo "$state"
+          if echo "$state" | grep -qiE 'restarting|exited'; then
+            echo "::error::A service is not healthy after deploy. Recent app logs:"
+            $DC logs --tail=50 app || true
+            exit 1
+          fi
+          echo "✅ Stack is up."
+          REMOTE

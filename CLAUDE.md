@@ -1,13 +1,13 @@
-# OLX Hunter Bot — Project Brief for Claude Code
+# Flat Hunter Bot — Project Brief for Claude Code
 
-Repo: `OLX-hunter-bot`
+Repo: `flat-hunter-bot`
 
 ## Goal
 Build a Telegram bot that monitors OLX housing listings against user-defined filters and sends instant notifications when new matching listings appear.
 
 ## Deployment context (read first)
 - This runs on an existing DigitalOcean droplet that already hosts another project (`aurora`, under `/opt/aurora/`).
-- Deploy this project fully isolated under `/opt/olx-bot/` — separate docker-compose stack, separate Docker network, no shared containers with the existing project.
+- Deploy this project fully isolated under `/opt/flat-hunter-bot/` — separate docker-compose stack, separate Docker network, no shared containers with the existing project.
 - **No ports exposed to the host.** The bot only makes outbound calls (Telegram API, OLX) — it needs zero inbound exposure, so there's nothing to route through nginx and no conflict with whatever the existing project listens on.
 - **No domain, no SSL, no webhook.** Telegram integration uses long polling exclusively.
 - Deployment should follow the same pattern already used for `aurora`: SSH into the droplet, `mkdir -p` the target directory if missing, then `docker-compose up -d`.
