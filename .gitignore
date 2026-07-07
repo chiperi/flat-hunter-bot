@@ -1,0 +1,23 @@
+# dependencies
+/node_modules
+
+# build output
+/dist
+*.tsbuildinfo
+
+# env / secrets
+.env
+.env.local
+.env.*.local
+
+# logs
+*.log
+npm-debug.log*
+
+# editor / OS
+.idea/
+.vscode/
+.DS_Store
+
+# redis dump (if run locally)
+dump.rdb

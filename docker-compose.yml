@@ -1,0 +1,53 @@
+# OLX Hunter Bot — isolated stack.
+#
+# Deployed on the shared DigitalOcean droplet under /opt/olx-bot/, fully
+# separate from the existing `aurora` project:
+#   - dedicated bridge network (olx-bot-net)
+#   - dedicated named volume (olx-redis-data)
+#   - NO ports published to the host (the bot only makes outbound calls)
+#
+# Deploy pattern (same as aurora):
+#   ssh droplet
+#   mkdir -p /opt/olx-bot && cd /opt/olx-bot
+#   # copy this repo + a populated .env here
+#   docker compose up -d --build
+
+services:
+  app:
+    build: .
+    image: olx-hunter-bot:latest
+    container_name: olx-bot-app
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Talk to the redis service by its compose name, on the private network.
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - olx-bot-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: olx-bot-redis
+    restart: unless-stopped
+    # Persist dedup state + profiles across restarts (append-only file).
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - olx-redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - olx-bot-net
+
+networks:
+  olx-bot-net:
+    driver: bridge
+
+volumes:
+  olx-redis-data:
+    driver: local
