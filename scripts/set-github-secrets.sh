@@ -65,16 +65,16 @@ set_secret() {
 }
 
 echo "── SSH / droplet ──────────────────────────────────────────────"
-set_secret DO_HOST            "Droplet IP or hostname"                       text   yes
-set_secret DO_USER            "SSH user (e.g. root or a docker-group user)"  text   yes
-set_secret DO_SSH_PRIVATE_KEY "Deploy PRIVATE key"                           file   yes
-set_secret DO_SSH_PORT        "SSH port (blank = 22)"                        text   no
+set_secret DO_FLAT_HUNTER_HOST            "Droplet IP or hostname"                       text   yes
+set_secret DO_FLAT_HUNTER_USER            "SSH user (e.g. root or a docker-group user)"  text   yes
+set_secret DO_FLAT_HUNTER_SSH_PRIVATE_KEY "Deploy PRIVATE key"                           file   yes
+set_secret DO_FLAT_HUNTER_SSH_PORT        "SSH port (blank = 22)"                        text   no
 
 echo
 echo "── App secrets ────────────────────────────────────────────────"
-set_secret TELEGRAM_BOT_TOKEN "Telegram bot token (from @BotFather)"         hidden yes
-set_secret ALLOWED_USER_IDS   "Allowed Telegram user IDs, comma-separated"   text   yes
-set_secret HTTP_PROXY_URL     "Scraper proxy URL (blank = none)"             hidden no
+set_secret FLAT_HUNTER_TELEGRAM_BOT_TOKEN "Telegram bot token (from @BotFather)"         hidden yes
+set_secret FLAT_HUNTER_ALLOWED_USER_IDS   "Allowed Telegram user IDs, comma-separated"   text   yes
+set_secret FLAT_HUNTER_HTTP_PROXY_URL     "Scraper proxy URL (blank = none)"             hidden no
 
 echo
 echo "Done. Verify at: https://github.com/$REPO/settings/secrets/actions"

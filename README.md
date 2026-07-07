@@ -153,7 +153,7 @@ container at `up`. The deploy also `rm -f`s any legacy `.env`.
 > defend against a root-level compromise of the droplet. For that tier, use an
 > external secrets manager.
 
-Updating the allowlist = edit the `ALLOWED_USER_IDS` **GitHub secret** and re-run
+Updating the allowlist = edit the `FLAT_HUNTER_ALLOWED_USER_IDS` **GitHub secret** and re-run
 the deploy (Actions → Run workflow). No SSH, no file edit.
 (If the group turns over often, the allowlist can move into a Redis Set later —
 same infra, no redeploy. See `src/telegram/allowlist.middleware.ts`.)
@@ -179,13 +179,18 @@ Settings → Secrets and variables → Actions → **New repository secret**:
 
 | Secret | Required | What it is |
 |---|:--:|---|
-| `DO_SSH_PRIVATE_KEY` | ✅ | Private key (full PEM contents) of a deploy keypair whose **public** key is in the droplet user's `~/.ssh/authorized_keys` |
-| `DO_HOST` | ✅ | Droplet IP or hostname |
-| `DO_USER` | ✅ | SSH user (`root`, or a deploy user in the `docker` group) |
-| `DO_SSH_PORT` | — | SSH port if not `22` |
-| `TELEGRAM_BOT_TOKEN` | ✅ | Bot token — injected into the container at deploy, never stored on the droplet |
-| `ALLOWED_USER_IDS` | ✅ | Comma-separated allowed Telegram ids — same injection |
-| `HTTP_PROXY_URL` | — | Outbound proxy for the scraper, if the droplet IP is blocked |
+| `DO_FLAT_HUNTER_SSH_PRIVATE_KEY` | ✅ | Private key (full PEM contents) of a deploy keypair whose **public** key is in the droplet user's `~/.ssh/authorized_keys` |
+| `DO_FLAT_HUNTER_HOST` | ✅ | Droplet IP or hostname |
+| `DO_FLAT_HUNTER_USER` | ✅ | SSH user (`root`, or a deploy user in the `docker` group) |
+| `DO_FLAT_HUNTER_SSH_PORT` | — | SSH port if not `22` |
+| `FLAT_HUNTER_TELEGRAM_BOT_TOKEN` | ✅ | Bot token — injected into the container at deploy, never stored on the droplet |
+| `FLAT_HUNTER_ALLOWED_USER_IDS` | ✅ | Comma-separated allowed Telegram ids — same injection |
+| `FLAT_HUNTER_HTTP_PROXY_URL` | — | Outbound proxy for the scraper, if the droplet IP is blocked |
+
+> The `FLAT_HUNTER_*` / `DO_FLAT_HUNTER_*` prefix namespaces these secrets so they
+> don't collide with other projects' secrets on the same account. Inside the
+> container the app still reads the plain env names (`TELEGRAM_BOT_TOKEN`, …) —
+> the workflow maps the secrets onto them at deploy.
 
 Set them all in one go with the helper (values stay on your machine — nothing is
 printed or written to history):
