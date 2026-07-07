@@ -33,7 +33,7 @@ export interface SourcesConfig {
   proxyUrl?: string;
   /** Per-site settings. */
   olx: { baseUrl: string; categoryPath: string };
-  domria: { baseUrl: string; apiKey?: string };
+  domria: { baseUrl: string; apiKey?: string; maxDetails: number };
 }
 
 export interface AppConfig {
@@ -105,6 +105,10 @@ export default (): AppConfig => {
       domria: {
         baseUrl: process.env.DOMRIA_BASE_URL?.trim() || 'https://developers.ria.com',
         apiKey: process.env.DOMRIA_API_KEY?.trim() || undefined,
+        // Cap the per-search detail fetches — DOM.RIA needs one extra API call
+        // per listing, the single biggest request amplifier. Keep it modest to
+        // stay well within the API quota.
+        maxDetails: parseIntEnv(process.env.DOMRIA_MAX_DETAILS, 10),
       },
     },
   };

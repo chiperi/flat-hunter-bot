@@ -1,30 +1,33 @@
 # Flat Hunter Bot 🏠🔎
 
-A Telegram bot that monitors **OLX** housing listings against user-defined
-filters and sends **instant notifications** when a new matching listing appears —
-or when the price of one you've already seen changes.
+A Telegram bot that monitors **several Ukrainian housing sites** (OLX, DOM.RIA,
+LUN, Flatfy, Rieltor, BirdRent, Josti) against user-defined filters and sends
+**instant notifications** when a new matching listing appears — or when the price
+of one you've already seen changes. Each alert says which site it came from.
 
 Built with **NestJS + TypeScript**, **Telegraf** (long polling, no webhook) and
 **Redis** for all state. Runs as an isolated Docker Compose stack with **no
-inbound ports** — it only makes outbound calls to Telegram and OLX.
+inbound ports** — it only makes outbound calls to Telegram and the housing sites.
 
 ---
 
 ## Features
 
+- **Multiple sources** — one search fans out to every enabled site and merges
+  the results; dedup is namespaced per site (`source:id`) so nothing collides.
 - **Multiple independent search profiles per user** — e.g. "apartment for me"
   + "garage as investment" — each polling and notifying on its own.
 - **Filters:** city, district, price range, area range (m²), owner-only vs.
   include realtors.
-- **New-listing + price-change alerts** with title, price, area, district, link
-  and thumbnail.
+- **New-listing + price-change alerts** with title, price, area, district, link,
+  thumbnail, and the source site.
 - **Allowlist access control** — only permitted Telegram user IDs can use the bot.
 - **Resilient by design** — dedup state lives in Redis (restart-safe); one
-  user's error never stops polling for everyone else; the scraper never throws
-  into the loop.
+  user's error never stops polling for everyone else; a broken/blocked source
+  never throws into the loop (returns `[]`).
 - **Scraping etiquette** — jittered poll intervals, rotating realistic
-  User-Agents, retry-with-backoff, and identical searches deduped into one OLX
-  fetch per cycle.
+  User-Agents, retry-with-backoff, per-request delays, and identical searches
+  deduped into one fetch per cycle. See [Rate limits](#rate-limits--avoiding-blocks).
 
 ---
 
@@ -40,7 +43,7 @@ inbound ports** — it only makes outbound calls to Telegram and OLX.
 | `/forgetme` | Delete **all** your profiles and stored data |
 | `/cancel` | Abort the `/newsearch` wizard at any step |
 
-User-facing copy is **Ukrainian** by default (targets **OLX.ua**).
+User-facing copy is **Ukrainian** by default (targets Ukrainian housing sites).
 
 ---
 
@@ -52,7 +55,7 @@ NestJS modules, roughly one per concern:
 src/
 ├── config/           # typed env parsing (one place for defaults/validation)
 ├── telegram/         # bot commands, /newsearch wizard, allowlist, notifications
-├── olx-scraper/      # fetch + parse listings, behind the OlxScraper interface
+├── sources/          # ListingSource interface, per-site specs, registry/aggregator
 ├── search-profiles/  # profile model + CRUD/lifecycle service
 ├── persistence/      # single Redis client + repository-style access
 └── scheduler/        # the jittered polling loop (dedup → diff → notify)
@@ -66,7 +69,7 @@ filter profiles), so a relational DB would be over-engineering.
 | `{p}:profile:{id}` | JSON string | a `SearchProfile` |
 | `{p}:user:{userId}:profiles` | Set | a user's profile ids |
 | `{p}:profiles:all` | Set | every profile id (scheduler iterates this) |
-| `{p}:seen:{profileId}` | **Hash** `listingId → lastPrice` | dedup **and** price-change detection |
+| `{p}:seen:{profileId}` | **Hash** `source:id → lastPrice` | dedup **and** price-change detection |
 
 The seen-**hash** (not a plain set) is the key trick: a stored price differing
 from the freshly-scraped price is exactly the signal for a "price changed"
@@ -78,22 +81,85 @@ recorded silently (no messages) so activating a search doesn't blast you with
 every listing that already exists — you only hear about genuinely new ones from
 then on.
 
-### The scraper abstraction
+### The source engine
 
-Everything talks to the `OlxScraper` interface via the `OLX_SCRAPER` token, so
-the fetch strategy can change without touching the rest of the app. Two
-implementations ship, selected by the `SCRAPER` env var:
+Everything talks to the `ListingSource` interface. A `SourceRegistry` fans one
+search out to every **enabled** source concurrently and merges the results — the
+scheduler never knows or cares which sites are active. Adding a site = add a
+compact `SiteSpec` in `src/sources/site-specs.ts` and its id to
+`KNOWN_SOURCE_IDS`; no other wiring changes.
 
-- **`mock`** (default) — deterministic fake listings, **no network**. Use it to
-  try the whole pipeline (wizard, dedup, notifications, price changes) end-to-end
-  without touching OLX. The mock rotates in a "new" listing and drifts one price
-  every ~10 minutes so you can see both alert types fire.
-- **`http`** — real **OLX.ua** scraping (axios + Cheerio; parses the embedded
-  `__NEXT_DATA__` JSON, falling back to HTML cards). ⚠️ **Best-effort:** OLX has
-  no public API and its markup/params drift, so treat the URL builder and parsers
-  as a starting point to tune against the live site. Datacenter IPs (like the
-  droplet) may be rate-limited — set `HTTP_PROXY_URL` to route through a proxy if
-  needed. Any failure returns `[]`, never a throw.
+Two things are configurable:
+
+- **`SCRAPER`** = global mode: `mock` (default, **no network** — every source
+  emits deterministic fake listings so you can exercise the whole pipeline) or
+  `http` (real best-effort fetching).
+- **`SOURCES`** = which sites are active (comma-separated; default = all).
+
+| id | Site | http-mode data |
+|---|---|---|
+| `olx` | OLX.ua | HTML (`__NEXT_DATA__` → cards) — best-effort |
+| `rieltor` | rieltor.ua | HTML — best-effort |
+| `domria` | dom.ria.com | **official API** (needs `DOMRIA_API_KEY`) — real data |
+| `lun` | lun.ua | HTML/SPA — best-effort |
+| `flatfy` | flatfy.ua | HTML/SPA — best-effort |
+| `birdrent` | birdrent.com | HTML — best-effort |
+| `josti` | josti.com.ua | HTML — best-effort |
+
+⚠️ **Real parsing is best-effort.** Only DOM.RIA exposes a stable public API;
+the rest are scraped, their markup drifts, several are SPAs, and datacenter IPs
+may be blocked. Treat each spec's `buildUrl`/`parse` as a starting point to tune
+against the live site. Every source returns `[]` on any failure (never throws),
+and `mock` — the default — sidesteps all of it.
+
+> **Overlap:** `lun` and `flatfy` are the same company (LUN), and Flatfy is
+> itself an aggregator that already pulls OLX + DOM.RIA. Enabling everything will
+> surface the same physical flat more than once (dedup is per source, so each
+> fires independently). Trim `SOURCES` if that's noisy.
+
+---
+
+## Rate limits & avoiding blocks
+
+Real (`http`-mode) request volume per polling cycle is roughly:
+
+```
+requests ≈ (distinct searches) × (enabled sources)      [+ DOM.RIA extra]
+```
+
+DOM.RIA is special: its API is 2-step (one search call + one detail call per
+listing), so it adds up to `DOMRIA_MAX_DETAILS` (default **10**) extra calls per
+search — the single biggest amplifier, which is why it's capped and configurable.
+
+**In `mock` mode (the default) the network is never touched — zero risk.** The
+concern only applies once you set `SCRAPER=http`. Two realistic failure modes:
+
+1. **DOM.RIA API quota** — with a free key, heavy polling can exhaust the daily
+   quota. Mitigate: keep `DOMRIA_MAX_DETAILS` low, use a conservative
+   `POLL_INTERVAL_MS`, and don't run dozens of distinct searches.
+2. **Anti-scraping on the HTML sites** — the droplet is a datacenter IP, which
+   OLX/LUN/Rieltor/etc. sometimes rate-limit or block.
+
+**What's already built in** (see `src/sources/http-listing-source.ts`):
+jittered poll interval (`POLL_INTERVAL_MS ± POLL_JITTER_MS`), retry with
+exponential backoff + full jitter, rotating User-Agents, a small random delay
+before every request, and **identical-search dedup** (one fetch per unique
+search per cycle, not per profile). Sources run concurrently but across
+*different* hosts, so no single host is hit more than once per search.
+
+**Knobs to turn down the volume:**
+
+| Lever | Effect |
+|---|---|
+| `POLL_INTERVAL_MS` (raise to 600000 = 10 min) | fewer cycles → fewer requests |
+| `SOURCES` (trim to the sites you actually want) | fewer requests per cycle; also kills flatfy/lun overlap |
+| `DOMRIA_MAX_DETAILS` (lower) | fewer DOM.RIA API calls |
+| `HTTP_PROXY_URL` (residential/rotating proxy) | dodge datacenter-IP blocks |
+| `SCRAPER=mock` | zero external requests |
+
+**Recommended rollout:** start on `mock`, then enable `http` with a small
+`SOURCES` list and a 10-minute interval, watch the logs for `HTTP 4xx/429`
+warnings per source, and scale up (or add a proxy / DOM.RIA key) from there.
 
 ---
 
@@ -113,7 +179,7 @@ npm install
 # 2. Configure
 cp .env.example .env
 #   set TELEGRAM_BOT_TOKEN and ALLOWED_USER_IDS (at minimum)
-#   keep SCRAPER=mock to try it without hitting OLX
+#   keep SCRAPER=mock to try it without hitting any site
 #   set REDIS_URL=redis://127.0.0.1:6379 for a local redis
 
 # 3. Run (watch mode)
@@ -240,10 +306,13 @@ See [`.env.example`](.env.example) for the annotated list. Highlights:
 | `REDIS_KEY_PREFIX` | `olx` | namespaces every key |
 | `POLL_INTERVAL_MS` | `300000` | base poll interval (5 min) |
 | `POLL_JITTER_MS` | `60000` | ± random jitter per cycle |
-| `SCRAPER` | `mock` | `mock` or `http` |
-| `OLX_BASE_URL` | `https://www.olx.ua` | http scraper only |
-| `OLX_CATEGORY_PATH` | `uk/nedvizhimost/kvartiry` | http scraper only |
-| `HTTP_PROXY_URL` | — | optional outbound proxy for the scraper |
+| `SCRAPER` | `mock` | global source mode: `mock` or `http` |
+| `SOURCES` | all | comma list of active sites (`olx,rieltor,domria,lun,flatfy,birdrent,josti`) |
+| `OLX_BASE_URL` | `https://www.olx.ua` | OLX http source only |
+| `OLX_CATEGORY_PATH` | `uk/nedvizhimost/kvartiry` | OLX http source only |
+| `DOMRIA_API_KEY` | — | DOM.RIA official API key; without it `domria` returns nothing in http mode |
+| `DOMRIA_MAX_DETAILS` | `10` | cap on per-search DOM.RIA detail calls (rate-limit guard) |
+| `HTTP_PROXY_URL` | — | optional outbound proxy for all http sources |
 | `SCRAPER_TIMEOUT_MS` | `15000` | per-request timeout |
 | `SCRAPER_MAX_RETRIES` | `3` | retry-with-backoff attempts |
 | `LOG_LEVEL` | `log` | `error`\|`warn`\|`log`\|`debug`\|`verbose` |
@@ -264,9 +333,12 @@ npm run format       # prettier
 
 ## Known limitations / next steps
 
-- **Real OLX parsing needs tuning** against the live site (selectors/params/location
-  slugs). Start on `mock`, switch to `http`, iterate. The interface means this
-  won't ripple into the rest of the app.
+- **Real per-site parsing needs tuning** against each live site (selectors /
+  params / location slugs); only DOM.RIA has an official API. Start on `mock`,
+  switch to `http` with a small `SOURCES` list, iterate. The `ListingSource`
+  interface means this won't ripple into the rest of the app.
+- **No cross-source dedup** — the same flat listed on two sites (e.g. via the
+  flatfy/lun overlap) notifies once per source. Trim `SOURCES` to avoid it.
 - **No price *history***, by design — only current-vs-last-seen is compared. Full
   trend history is the trigger to add a time-series store (SQLite/Postgres) later.
 - **Profile editing** in `/mysearches` is Pause/Resume/Delete for v1; to change

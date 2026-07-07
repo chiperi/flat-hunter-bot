@@ -120,7 +120,10 @@ const domria: SiteSpec = {
     if (c.priceMin != null) search.set('firstIterationBound', String(c.priceMin));
     if (c.priceMax != null) search.set('price_cur', String(c.priceMax));
     const found: any = await ctx.getJson(`${baseUrl}/dom/search?${search.toString()}`);
-    const ids: number[] = Array.isArray(found?.items) ? found.items.slice(0, 20) : [];
+    // Cap detail fetches — one API call per listing is the biggest amplifier.
+    const ids: number[] = Array.isArray(found?.items)
+      ? found.items.slice(0, ctx.cfg.domria.maxDetails)
+      : [];
 
     const listings: RawListing[] = [];
     for (const id of ids) {
