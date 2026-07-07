@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectBot } from 'nestjs-telegraf';
 import { Telegraf, Context } from 'telegraf';
 import { Listing } from '../sources/listing.interface';
@@ -15,10 +15,32 @@ import { esc } from './telegram.copy';
  * so it retries next cycle rather than being silently swallowed.
  */
 @Injectable()
-export class TelegramService {
+export class TelegramService implements OnApplicationBootstrap {
   private readonly logger = new Logger(TelegramService.name);
 
   constructor(@InjectBot() private readonly bot: Telegraf<Context>) {}
+
+  /**
+   * Register the command menu once at startup, so the commands show up in
+   * Telegram's "Menu" button and the `/` autocomplete list. Best-effort — a
+   * failure here must never block the bot from running.
+   */
+  async onApplicationBootstrap(): Promise<void> {
+    try {
+      await this.bot.telegram.setMyCommands([
+        { command: 'newsearch', description: '🔎 Новий пошук' },
+        { command: 'mysearches', description: '📋 Мої пошуки' },
+        { command: 'pause', description: '⏸ Призупинити пошук: /pause <id>' },
+        { command: 'resume', description: '▶️ Відновити пошук: /resume <id>' },
+        { command: 'forgetme', description: '🧹 Видалити всі мої дані' },
+        { command: 'help', description: 'ℹ️ Довідка' },
+        { command: 'start', description: '👋 Почати' },
+      ]);
+      this.logger.log('Registered bot command menu (setMyCommands).');
+    } catch (err) {
+      this.logger.warn(`setMyCommands failed: ${(err as Error).message}`);
+    }
+  }
 
   async notifyNewListing(profile: SearchProfile, listing: Listing): Promise<void> {
     const caption = this.buildCaption('🆕 <b>Нове оголошення</b>', profile, listing);
