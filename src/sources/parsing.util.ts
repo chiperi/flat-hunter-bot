@@ -1,6 +1,5 @@
 import * as cheerio from 'cheerio';
 import { RawListing } from './listing.interface';
-import { toUah } from './currency';
 
 /**
  * Shared, defensive parsing helpers for the site specs. Everything here is
@@ -149,65 +148,6 @@ export function parseCards(html: string, sel: CardSelectors, baseUrl: string): R
         isBusiness: false,
       });
     });
-    return out;
-  } catch {
-    return [];
-  }
-}
-
-/**
- * lun.ua server-renders a `<script id="schema-real-estate" ld+json>` ItemList
- * (title, price + priceCurrency, numberOfRooms, district via areaServed, city,
- * image) plus a `.RealtyCard` per listing carrying `page_id` / `is_owner` in a
- * `data-event-options` attribute. The two are index-aligned; we zip them and
- * convert non-UAH prices with the NBU rate. lun doesn't publish m² in the list,
- * so `area` is null (its area filter is a no-op). Verified against the live page.
- */
-export function parseLun(html: string, rates: Record<string, number>): RawListing[] {
-  try {
-    const $ = cheerio.load(html);
-    const raw = $('#schema-real-estate').first().html();
-    if (!raw) return [];
-    let items: any[] = [];
-    try {
-      const data = JSON.parse(raw);
-      items = Array.isArray(data?.itemListElement) ? data.itemListElement : [];
-    } catch {
-      return [];
-    }
-
-    const cards: { id: string; owner: boolean }[] = [];
-    $('[class*="RealtyCard_root"]').each((_, el) => {
-      const opts = $(el).find('[data-event-options]').first().attr('data-event-options') ?? '';
-      const id = /page_id:(\d+)/.exec(opts)?.[1];
-      if (id) cards.push({ id, owner: /is_owner:1/.test(opts) });
-    });
-    // The ld+json and the cards must line up 1:1; if not, bail rather than
-    // mismatch fields onto the wrong listing.
-    if (!items.length || items.length !== cards.length) return [];
-
-    const out: RawListing[] = [];
-    for (let i = 0; i < items.length; i++) {
-      const it = items[i]?.item ?? items[i];
-      const off = it?.offers ?? {};
-      const { id, owner } = cards[i];
-      const rooms = toInt(it?.numberOfRooms);
-      const title =
-        [rooms ? `${rooms}-кімн.` : null, it?.name].filter(Boolean).join(', ') || `Квартира ${id}`;
-      out.push({
-        id,
-        title,
-        price: toUah(toInt(off?.price), String(off?.priceCurrency ?? 'uah'), rates),
-        currency: 'грн',
-        area: null, // lun doesn't expose m² in the list
-        rooms,
-        city: it?.address?.addressLocality ?? undefined,
-        district: off?.areaServed?.name ?? undefined,
-        url: `https://lun.ua/uk/realty/${id}`,
-        imageUrl: Array.isArray(it?.image) ? it.image[0] : undefined,
-        isBusiness: !owner, // is_owner:1 → private owner
-      });
-    }
     return out;
   } catch {
     return [];

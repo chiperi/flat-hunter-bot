@@ -8,27 +8,19 @@ import {
   extractNextData,
   mapOffer,
   parseCards,
-  parseLun,
   parseRieltor,
   toFloat,
   toInt,
 } from './parsing.util';
-import { uahRates } from './currency';
 
 /**
- * One spec per tracked site.
+ * One spec per tracked site. Three remain: DOM.RIA (official API) and Rieltor
+ * (server-rendered HTML) are the live, tuned sources; OLX has a real adapter but
+ * Cloudflare-blocks the droplet's datacenter IP (403), so it only runs behind a
+ * residential proxy (`HTTP_PROXY_URL`).
  *
- * ⚠️ The HTML parsers are BEST-EFFORT. None of these sites has a stable public
- * contract for this use case (except DOM.RIA's official API), their markup
- * drifts, and several are SPAs / may block datacenter IPs. Treat every
- * `buildUrl`/`parse` below as a starting point to tune against the live site.
- * All parsers are defensive (return [] on mismatch). DOM.RIA is the tuned,
- * working source; the others are wired but not yet driven by the wizard.
- *
- * Note on overlap: lun.ua and flatfy.ua are the same company (LUN), and Flatfy
- * is itself an aggregator that already pulls OLX + DOM.RIA — enabling all of
- * them will surface the same physical flat more than once (dedup is per source,
- * so each fires independently). Trim `SOURCES` if that's noisy.
+ * ⚠️ The HTML parsers are BEST-EFFORT — markup drifts, so they're all defensive
+ * (return [] on mismatch) and expected to be tuned against the live site.
  */
 
 /** Shared "try __NEXT_DATA__ JSON, then fall back to HTML cards" parser. */
@@ -252,58 +244,9 @@ const domria: SiteSpec = {
   },
 };
 
-// --- lun.ua ----------------------------------------------------------------
-// Server-rendered, reachable from the droplet (same LUN/Cloudflare infra as
-// rieltor). Data comes from a ld+json ItemList + per-card page_id (see
-// parseLun). Kyiv-only for now (path segment). Prices arrive in the seller's
-// currency ($/€/грн) with no pre-converted UAH, so we pass NBU rates in.
-function lunUrl(c: SearchCriteria): string {
-  const op = c.operation === 'sale' ? 'sale' : 'rent';
-  return `https://lun.ua/${op}/kyiv/flats`;
-}
-
-const lun: SiteSpec = {
-  id: 'lun',
-  label: 'ЛУН',
-  requestKey: (c) => `${(c.city ?? '').trim().toLowerCase()}|${c.operation ?? 'rent'}`,
-  fetch: async (ctx, c) => {
-    if (!/київ|kyiv|киев/i.test(c.city ?? '')) return []; // Kyiv-only for now
-    const html = await ctx.getHtml(lunUrl(c));
-    const rates = await uahRates((url) => ctx.getJson(url));
-    return parseLun(html, rates);
-  },
-};
-
-// --- flatfy.ua (same LUN backend; overlaps lun + aggregates OLX/DOM.RIA) ----
-const flatfy: SiteSpec = {
-  id: 'flatfy',
-  label: 'Flatfy',
-  kind: 'html',
-  buildUrl: (c) => {
-    const p = priceAreaQuery(c, {
-      q: 'geo',
-      priceMin: 'price_from',
-      priceMax: 'price_to',
-      areaMin: 'area_total_from',
-      areaMax: 'area_total_to',
-    });
-    return `https://flatfy.ua/uk/оренда-квартир?${p.toString()}`;
-  },
-  parse: (html) =>
-    nextDataThenCards(html, 'https://flatfy.ua', {
-      card: '[class*="card"], article',
-      title: 'h3, h2, [class*="title"]',
-      price: '[class*="price"]',
-      link: 'a[href]',
-      image: 'img',
-    }),
-};
-
 /** All specs, keyed by id — the module builds a source per ENABLED id. */
 export const SITE_SPECS: Record<string, SiteSpec> = {
   olx,
   rieltor,
   domria,
-  lun,
-  flatfy,
 };

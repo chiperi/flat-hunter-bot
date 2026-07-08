@@ -14,8 +14,6 @@ describe('listingKey', () => {
 
 describe('KNOWN_SOURCE_IDS', () => {
   it('contains the expected sources', () => {
-    expect(KNOWN_SOURCE_IDS).toEqual(
-      expect.arrayContaining(['olx', 'rieltor', 'domria', 'lun', 'flatfy']),
-    );
+    expect(KNOWN_SOURCE_IDS).toEqual(expect.arrayContaining(['olx', 'rieltor', 'domria']));
   });
 });

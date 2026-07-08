@@ -4,9 +4,9 @@ A Telegram bot that monitors **Ukrainian housing sites** against a user-defined
 filter and sends **instant notifications** when a new matching listing appears —
 or when the price of one you've already seen changes. You set the criteria once
 and it searches **every enabled site**; each alert says which site it came from.
-**DOM.RIA** and **Rieltor** are live today (real data). The engine also has adapters
-for **OLX**, **ЛУН** and **Flatfy**, but they Cloudflare-block the droplet's
-datacenter IP (403) — they enable once `HTTP_PROXY_URL` points at a residential proxy.
+**DOM.RIA** and **Rieltor** are live today (real data). The engine also has an
+adapter for **OLX**, but OLX Cloudflare-blocks the droplet's datacenter IP (403) —
+it enables once `HTTP_PROXY_URL` points at a residential proxy.
 
 Built with **NestJS + TypeScript**, **Telegraf** (long polling, no webhook) and
 **Redis** for all state. Runs as an isolated Docker Compose stack with **no
@@ -101,11 +101,10 @@ namespaced by `source:id`, so the same listing on two sites can't collide.
 | `domria` | dom.ria.com | **official API** (needs `DOMRIA_API_KEY`) — real, tuned |
 | `rieltor` | rieltor.ua | HTML (server-rendered cards) — real, verified live |
 | `olx` | OLX.ua | HTML (`__NEXT_DATA__` → cards) — **403 from datacenter IP → needs a proxy** |
-| `lun` | lun.ua | HTML (ld+json + `page_id`) — real parser (+NBU $/€→грн), but **403 → needs a proxy** |
-| `flatfy` | flatfy.ua | HTML (LUN cards) — aggregates DOM.RIA/OLX, and **403 → needs a proxy** |
 
-_(birdrent.com and josti.com.ua were evaluated and dropped — both are booking-app
-products with no browseable web catalog to scrape.)_
+_Dropped after evaluation: **birdrent.com** / **josti.com.ua** (booking apps, no web
+catalog to scrape); **lun.ua** / **flatfy.ua** (LUN aggregators — 403 from the
+droplet and heavily duplicate DOM.RIA/Rieltor)._
 
 ⚠️ **The HTML parsers are best-effort.** DOM.RIA exposes a stable public API and
 Rieltor's cards are parsed from verified live markup; the rest need tuning against
@@ -298,7 +297,7 @@ See [`.env.example`](.env.example) for the annotated list. Highlights:
 | `REDIS_KEY_PREFIX` | `olx` | namespaces every key |
 | `POLL_INTERVAL_MS` | `300000` | base poll interval (5 min) |
 | `POLL_JITTER_MS` | `60000` | ± random jitter per cycle |
-| `SOURCES` | `domria,rieltor` | comma list of active sites (`olx,rieltor,domria,lun,flatfy,birdrent,josti`) |
+| `SOURCES` | `domria,rieltor` | comma list of active sites (`olx,rieltor,domria`; olx needs a proxy) |
 | `DOMRIA_API_KEY` | — | DOM.RIA official API key; without it `domria` returns nothing |
 | `DOMRIA_MAX_DETAILS` | `10` | cap on per-search DOM.RIA detail calls (rate-limit guard) |
 | `OLX_BASE_URL` | `https://www.olx.ua` | OLX source only |

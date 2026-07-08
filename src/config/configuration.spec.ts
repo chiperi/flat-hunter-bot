@@ -26,7 +26,7 @@ describe('configuration', () => {
     delete process.env.SOURCES;
     delete process.env.ALLOWED_USER_IDS;
     const cfg = configuration();
-    expect(cfg.sources.enabled).toEqual(['olx', 'rieltor', 'domria', 'lun', 'flatfy']);
+    expect(cfg.sources.enabled).toEqual(['olx', 'rieltor', 'domria']);
     expect(cfg.redis.keyPrefix).toBe('olx');
     expect(cfg.polling.intervalMs).toBe(300000);
     expect(cfg.telegram.allowedUserIds).toEqual([]);

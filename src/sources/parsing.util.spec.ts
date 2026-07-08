@@ -7,7 +7,6 @@ import {
   mapOffer,
   parseCards,
   parseRieltor,
-  parseLun,
   idFromHref,
 } from './parsing.util';
 
@@ -210,60 +209,6 @@ describe('parseRieltor', () => {
 
   it('returns [] for empty/garbage html', () => {
     expect(parseRieltor('<html></html>')).toEqual([]);
-  });
-});
-
-describe('parseLun', () => {
-  const rates = { UAH: 1, USD: 40 };
-  const item = (o: any) => ({ item: o });
-  const ld = (arr: any[]) =>
-    `<script id="schema-real-estate" type="application/ld+json">${JSON.stringify({
-      itemListElement: arr,
-    })}</script>`;
-  const card = (id: string, owner: 0 | 1) =>
-    `<div class="RealtyCard_root__x"><button data-event-options="site:lun.ua|page_id:${id}|is_owner:${owner}">go</button></div>`;
-
-  const uah = item({
-    name: 'Хрещатик, 1',
-    numberOfRooms: 2,
-    image: ['https://img/1.jpg'],
-    address: { addressLocality: 'Київ' },
-    offers: { price: 18000, priceCurrency: 'uah', areaServed: { name: 'Печерський' } },
-  });
-  const usd = item({
-    name: 'Січових Стрільців, 79',
-    numberOfRooms: 3,
-    address: { addressLocality: 'Київ' },
-    offers: { price: 2500, priceCurrency: 'usd', areaServed: { name: 'Шевченківський' } },
-  });
-
-  it('zips ld+json with card page_id, converts $ → грн, flags owner', () => {
-    const html = `<html>${ld([uah, usd])}${card('111', 0)}${card('222', 1)}</html>`;
-    const res = parseLun(html, rates);
-    expect(res).toHaveLength(2);
-    expect(res[0]).toMatchObject({
-      id: '111',
-      price: 18000,
-      currency: 'грн',
-      rooms: 2,
-      area: null,
-      city: 'Київ',
-      district: 'Печерський',
-      isBusiness: true, // is_owner:0
-      url: 'https://lun.ua/uk/realty/111',
-      imageUrl: 'https://img/1.jpg',
-    });
-    expect(res[0].title).toContain('2-кімн.');
-    expect(res[1]).toMatchObject({ id: '222', price: 100000, isBusiness: false }); // $2500 × 40, is_owner:1
-  });
-
-  it('bails to [] when ld+json and cards do not line up', () => {
-    const html = `<html>${ld([uah, usd])}${card('111', 0)}</html>`; // 2 items, 1 card
-    expect(parseLun(html, rates)).toEqual([]);
-  });
-
-  it('returns [] when the schema script is absent', () => {
-    expect(parseLun('<html><div class="RealtyCard_root__x"></div></html>', rates)).toEqual([]);
   });
 });
 
