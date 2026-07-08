@@ -27,6 +27,7 @@ services:
       - SOURCES=${SOURCES:-domria}
       - POLL_INTERVAL_MS=${POLL_INTERVAL_MS:-300000}
       - POLL_JITTER_MS=${POLL_JITTER_MS:-60000}
+      - DOMRIA_MAX_DETAILS=${DOMRIA_MAX_DETAILS:-10}
       - OLX_BASE_URL=${OLX_BASE_URL:-https://www.olx.ua}
       - OLX_CATEGORY_PATH=${OLX_CATEGORY_PATH:-uk/nedvizhimost/kvartiry}
       - SCRAPER_TIMEOUT_MS=${SCRAPER_TIMEOUT_MS:-15000}

@@ -108,6 +108,7 @@ jobs:
           # -> Actions -> Variables). Defaults: DOM.RIA, 10-min poll.
           export SOURCES='${{ vars.SOURCES || 'domria' }}'
           export POLL_INTERVAL_MS='${{ vars.POLL_INTERVAL_MS || '600000' }}'
+          export DOMRIA_MAX_DETAILS='${{ vars.DOMRIA_MAX_DETAILS || '10' }}'
 
           # Prefer the Docker Compose v2 plugin; fall back to legacy docker-compose.
           if docker compose version >/dev/null 2>&1; then
