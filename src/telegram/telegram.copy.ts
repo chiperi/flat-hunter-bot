@@ -1,5 +1,4 @@
 import { SearchProfile } from '../search-profiles/search-profile.model';
-import { SOURCE_LABELS } from '../sources/listing.interface';
 
 /**
  * All user-facing bot copy in one place. Ukrainian by default (per the brief).
@@ -46,7 +45,6 @@ function fmtRange(min?: number, max?: number, unit = ''): string {
 export function describeProfile(p: SearchProfile): string {
   const c = p.criteria;
   const where = c.district ? `${esc(c.city)}, ${esc(c.district)}` : esc(c.city);
-  const site = SOURCE_LABELS[p.source] ?? esc(p.source);
   const op = c.operation === 'sale' ? 'продаж' : 'довгострокова оренда';
   const price = fmtRange(c.priceMin, c.priceMax, 'грн');
   const area = fmtRange(c.areaMin, c.areaMax, 'м²');
@@ -54,7 +52,7 @@ export function describeProfile(p: SearchProfile): string {
 
   const lines = [
     `🔎 <b>${esc(p.name)}</b>  <code>${esc(p.id)}</code>`,
-    `   🌐 ${esc(site)}   ${op}`,
+    `   🌐 усі сайти   ${op}`,
     `   📍 ${where}`,
   ];
   if (c.rooms != null) lines.push(`   🚪 ${c.rooms >= 4 ? '4+' : c.rooms}-кімн.`);

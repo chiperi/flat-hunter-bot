@@ -8,14 +8,11 @@ import { parseRange } from './parsing.util';
 
 export const NEWSEARCH_SCENE = 'newsearch';
 
-// `/newsearch` configures one filter per site (per-site filters). The user picks
-// the site first; the rest of the flow is shared. The model is source-scoped, so
-// adding a site = a button here + a source spec.
-const SITE_LABELS: Record<string, string> = { domria: 'DOM.RIA', rieltor: 'Rieltor' };
+// `/newsearch` configures a single filter per user. It queries EVERY enabled site
+// (DOM.RIA + Rieltor + …); each alert is tagged with the site it came from. No
+// site is chosen here — set the criteria once, get matches from all of them.
 
 // --- button labels ---------------------------------------------------------
-const SITE_DOMRIA = '🟢 DOM.RIA';
-const SITE_RIELTOR = '🔵 Rieltor';
 const OP_RENT = '🔑 Довгострокова оренда';
 const OP_SALE = '🏢 Продаж';
 const CITY_KYIV = '🏙 Київ';
@@ -23,19 +20,10 @@ const ROOMS_ANY = 'Будь-яка';
 const OTHER = '✏️ Інше';
 const CANCEL = '❌ Відмінити';
 
-type Stage =
-  | 'site'
-  | 'operation'
-  | 'city'
-  | 'rooms'
-  | 'price'
-  | 'priceManual'
-  | 'area'
-  | 'areaManual';
+type Stage = 'operation' | 'city' | 'rooms' | 'price' | 'priceManual' | 'area' | 'areaManual';
 
 interface WizardState {
   stage: Stage;
-  source?: string;
   editing?: boolean;
   operation?: 'rent' | 'sale';
   city?: string;
@@ -49,10 +37,11 @@ interface WizardState {
 const HTML = { parse_mode: 'HTML' as const };
 
 /**
- * New-search wizard — a small state machine. One filter per site:
- *   site [DOM.RIA | Rieltor] → operation [оренда | продаж] → city [Київ]
- *   → rooms [1|2|3|4+|будь-яка] → price → area → save.
- * Re-running for a site edits (overwrites) that site's existing filter.
+ * New-search wizard — a small state machine. One filter per user, queried
+ * across all enabled sites:
+ *   operation [оренда | продаж] → city [Київ] → rooms [1|2|3|4+|будь-яка]
+ *   → price → area → save.
+ * Re-running edits (overwrites) the user's existing filter.
  */
 @Scene(NEWSEARCH_SCENE)
 export class NewSearchWizard {
@@ -63,11 +52,16 @@ export class NewSearchWizard {
   @SceneEnter()
   async onEnter(@Ctx() ctx: Scenes.SceneContext) {
     const st = this.state(ctx);
-    st.stage = 'site';
+    st.stage = 'operation';
+    const existing = await this.profiles.findByUser(ctx.from?.id as number);
+    st.editing = Boolean(existing);
+    const intro = existing
+      ? '✏️ Оновлюємо твій фільтр. Відповідай наново.\n'
+      : '🆕 Новий фільтр. Шукаю на всіх сайтах (DOM.RIA + Rieltor).\n';
     await ctx.reply(
-      '🆕 Новий фільтр. Спершу оберіть <b>сайт</b> (на кожен сайт — один фільтр).\n' +
-        'Скасувати — кнопкою «❌ Відмінити» (на будь-якому кроці).\n\n1️⃣ <b>Сайт</b>?',
-      { ...HTML, ...Markup.keyboard([[SITE_DOMRIA, SITE_RIELTOR], [CANCEL]]).oneTime().resize() },
+      intro +
+        'Скасувати — кнопкою «❌ Відмінити» (на будь-якому кроці).\n\n1️⃣ Тип <b>операції</b>?',
+      { ...HTML, ...Markup.keyboard([[OP_RENT], [OP_SALE], [CANCEL]]).oneTime().resize() },
     );
   }
 
@@ -86,8 +80,6 @@ export class NewSearchWizard {
     if (low === '/cancel' || low.includes('відмін')) return this.onCancel(ctx);
     const st = this.state(ctx);
     switch (st.stage) {
-      case 'site':
-        return this.handleSite(ctx, st, text);
       case 'operation':
         return this.handleOperation(ctx, st, text);
       case 'city':
@@ -109,28 +101,6 @@ export class NewSearchWizard {
 
   // --- stage handlers -----------------------------------------------------
 
-  private async handleSite(ctx: Scenes.SceneContext, st: WizardState, text: string) {
-    const t = text.toLowerCase();
-    if (t.includes('dom') || t.includes('дом')) st.source = 'domria';
-    else if (t.includes('rieltor') || t.includes('ріел') || t.includes('риел')) st.source = 'rieltor';
-    else {
-      await ctx.reply(`Оберіть сайт кнопкою: «${SITE_DOMRIA}» або «${SITE_RIELTOR}».`);
-      return;
-    }
-
-    const existing = await this.profiles.findByUserAndSource(ctx.from?.id as number, st.source);
-    st.editing = Boolean(existing);
-    const label = SITE_LABELS[st.source];
-    const intro = existing
-      ? `✏️ Оновлюємо твій фільтр <b>${label}</b>. Відповідай наново.\n\n`
-      : `🆕 Новий фільтр <b>${label}</b>.\n\n`;
-    st.stage = 'operation';
-    await ctx.reply(intro + '2️⃣ Тип <b>операції</b>?', {
-      ...HTML,
-      ...Markup.keyboard([[OP_RENT], [OP_SALE], [CANCEL]]).oneTime().resize(),
-    });
-  }
-
   private async handleOperation(ctx: Scenes.SceneContext, st: WizardState, text: string) {
     const t = text.toLowerCase();
     if (t.includes('оренд') || t.includes('rent')) st.operation = 'rent';
@@ -140,7 +110,7 @@ export class NewSearchWizard {
       return;
     }
     st.stage = 'city';
-    await ctx.reply('3️⃣ <b>Місто</b>? (поки доступний лише Київ)', {
+    await ctx.reply('2️⃣ <b>Місто</b>? (поки доступний лише Київ)', {
       ...HTML,
       ...Markup.keyboard([[CITY_KYIV], [CANCEL]]).oneTime().resize(),
     });
@@ -153,7 +123,7 @@ export class NewSearchWizard {
     }
     st.city = 'Київ';
     st.stage = 'rooms';
-    await ctx.reply('4️⃣ Скільки <b>кімнат</b>?', {
+    await ctx.reply('3️⃣ Скільки <b>кімнат</b>?', {
       ...HTML,
       ...Markup.keyboard([['1', '2', '3', '4+'], [ROOMS_ANY], [CANCEL]]).oneTime().resize(),
     });
@@ -220,15 +190,13 @@ export class NewSearchWizard {
       areaMax: st.areaMax,
       ownerOnly: false,
     };
-    const source = st.source ?? 'domria';
-    const label = SITE_LABELS[source] ?? source;
     const roomsPart = st.rooms != null ? ` · ${st.rooms >= 4 ? '4+' : st.rooms}-кімн.` : '';
     const opPart = st.operation === 'sale' ? 'продаж' : 'оренда';
-    const name = `${label} · ${st.city} · ${opPart}${roomsPart}`;
+    const name = `${st.city} · ${opPart}${roomsPart}`;
 
     const userId = ctx.from?.id as number;
     const chatId = ctx.chat?.id as number;
-    const profile = await this.profiles.upsertForSource(userId, chatId, source, criteria, name);
+    const profile = await this.profiles.upsertForUser(userId, chatId, criteria, name);
 
     await ctx.reply(
       `✅ <b>Фільтр ${st.editing ? 'оновлено' : 'збережено'}!</b>\n\n` +
@@ -236,7 +204,7 @@ export class NewSearchWizard {
         '\n\nПочну перевіряти найближчим часом. Керувати — /mysearches',
       { ...HTML, ...Markup.removeKeyboard() },
     );
-    this.logger.log(`newsearch(${source}) done: profile ${profile.id} for user ${userId}`);
+    this.logger.log(`newsearch done: profile ${profile.id} for user ${userId}`);
     await ctx.scene.leave();
   }
 
@@ -244,7 +212,7 @@ export class NewSearchWizard {
 
   private async askPrice(ctx: Scenes.SceneContext, st: WizardState) {
     st.stage = 'price';
-    await ctx.reply('5️⃣ Оберіть <b>ціну</b> (грн) або «Інше» для ручного вводу:', {
+    await ctx.reply('4️⃣ Оберіть <b>ціну</b> (грн) або «Інше» для ручного вводу:', {
       ...HTML,
       ...Markup.keyboard([['до 10000', 'до 20000', 'до 30000'], [OTHER], [CANCEL]]).oneTime().resize(),
     });
@@ -252,7 +220,7 @@ export class NewSearchWizard {
 
   private async askArea(ctx: Scenes.SceneContext, st: WizardState) {
     st.stage = 'area';
-    await ctx.reply('6️⃣ Оберіть <b>площу</b> (м²) або «Інше» для ручного вводу:', {
+    await ctx.reply('5️⃣ Оберіть <b>площу</b> (м²) або «Інше» для ручного вводу:', {
       ...HTML,
       ...Markup.keyboard([['30–60', 'до 45', 'до 80'], [OTHER], [CANCEL]]).oneTime().resize(),
     });

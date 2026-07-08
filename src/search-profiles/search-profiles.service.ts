@@ -26,12 +26,13 @@ export class SearchProfilesService {
 
   /**
    * Internal — mints a brand-new profile. NOT public: the only way to add a
-   * filter is `upsertForSource`, which enforces the one-filter-per-site rule.
+   * filter is `upsertForUser`, which enforces the one-filter-per-user rule.
+   * A profile queries every enabled site; its listings are namespaced by
+   * `source:id`, so results from different sites never collide.
    */
   private async create(
     userId: number,
     chatId: number,
-    source: string,
     criteria: SearchCriteria,
     name?: string,
   ): Promise<SearchProfile> {
@@ -39,7 +40,6 @@ export class SearchProfilesService {
       id: this.newId(),
       userId,
       chatId,
-      source,
       name: name?.trim() || defaultProfileName(criteria),
       criteria,
       paused: false,
@@ -47,37 +47,44 @@ export class SearchProfilesService {
       createdAt: Date.now(),
     };
     await this.profiles.save(profile);
-    this.logger.log(`Created ${source} profile ${profile.id} for user ${userId}`);
+    this.logger.log(`Created profile ${profile.id} for user ${userId}`);
     return profile;
   }
 
-  /** The user's existing filter for a site, if any (one filter per site). */
-  async findByUserAndSource(userId: number, source: string): Promise<SearchProfile | null> {
+  /** The user's existing filter, if any (one filter per user). */
+  async findByUser(userId: number): Promise<SearchProfile | null> {
     const list = await this.profiles.listByUser(userId);
-    return list.find((p) => p.source === source) ?? null;
+    return list[0] ?? null;
   }
 
   /**
-   * Create or overwrite the user's single filter for a site: if one exists,
-   * update its criteria/name in place (keeps id + primed state); else create.
+   * Create or overwrite the user's single filter: if one exists, update its
+   * criteria/name in place (keeps id + primed state); else create. Any extra
+   * legacy profiles (from the old one-per-site model) are collapsed into the
+   * kept one so a user never ends up with duplicate all-site searches.
    */
-  async upsertForSource(
+  async upsertForUser(
     userId: number,
     chatId: number,
-    source: string,
     criteria: SearchCriteria,
     name?: string,
   ): Promise<SearchProfile> {
-    const existing = await this.findByUserAndSource(userId, source);
-    if (existing) {
-      existing.criteria = criteria;
-      existing.name = name?.trim() || defaultProfileName(criteria);
-      existing.primed = false; // re-prime with the new criteria
-      await this.profiles.save(existing);
-      this.logger.log(`Updated ${source} profile ${existing.id} for user ${userId}`);
-      return existing;
+    const [keep, ...extra] = await this.profiles.listByUser(userId);
+    if (!keep) return this.create(userId, chatId, criteria, name);
+
+    keep.criteria = criteria;
+    keep.name = name?.trim() || defaultProfileName(criteria);
+    keep.primed = false; // re-prime with the new criteria
+    await this.profiles.save(keep);
+    for (const dup of extra) {
+      await this.profiles.delete(dup);
+      await this.seen.clear(dup.id);
     }
-    return this.create(userId, chatId, source, criteria, name);
+    this.logger.log(
+      `Updated profile ${keep.id} for user ${userId}` +
+        (extra.length ? ` (collapsed ${extra.length} legacy duplicate(s))` : ''),
+    );
+    return keep;
   }
 
   get(id: string): Promise<SearchProfile | null> {

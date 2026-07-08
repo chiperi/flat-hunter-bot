@@ -6,7 +6,6 @@ const profile = (over: Partial<SearchProfile> = {}): SearchProfile => ({
   id: 'p1',
   userId: 1,
   chatId: 1,
-  source: 'olx',
   name: 'n',
   criteria: { city: 'Київ', ownerOnly: false },
   paused: false,
@@ -43,6 +42,7 @@ const build = () => {
     notifyPriceChange: jest.fn().mockResolvedValue(undefined),
   };
   const sources = {
+    ids: ['olx'],
     has: jest.fn().mockReturnValue(true),
     fetchOne: jest.fn().mockResolvedValue([]),
     requestKey: jest.fn((_src: string, crit: any) => JSON.stringify(crit)),
@@ -134,6 +134,19 @@ describe('SchedulerService.runCycle', () => {
     ]);
     await scheduler.runCycle();
     expect(sources.fetchOne).toHaveBeenCalledTimes(1); // shared fetch → saves API quota
+  });
+
+  it('merges listings from every enabled source into one profile', async () => {
+    const { scheduler, profiles, seen, telegram, sources } = build();
+    sources.ids = ['domria', 'rieltor'];
+    profiles.listAll.mockResolvedValue([profile()]);
+    seen.getAll.mockResolvedValue(new Map());
+    sources.fetchOne.mockImplementation((src: string) =>
+      Promise.resolve([listing({ id: src === 'domria' ? 'd1' : 'r1', source: src, sourceLabel: src })]),
+    );
+    await scheduler.runCycle();
+    expect(sources.fetchOne).toHaveBeenCalledTimes(2); // one fetch per source
+    expect(telegram.notifyNewListing).toHaveBeenCalledTimes(2); // both sites' listings surfaced
   });
 
   it('does not mark seen when the notification fails', async () => {

@@ -11,15 +11,17 @@ import { TelegramService } from '../telegram/telegram.service';
 /**
  * The polling loop. One self-rescheduling cycle:
  *   1. load all active (non-paused) profiles
- *   2. group them by search signature so identical searches fetch ONCE
- *   3. per group: fetch from ALL active sources, then diff each profile against
+ *   2. for every (enabled source × unique request), fetch ONCE and cache — two
+ *      profiles that resolve to the same upstream request share the call
+ *   3. per profile: gather listings from ALL enabled sources, then diff against
  *      its Redis seen-hash (keyed by `source:id`, so sites can't collide)
  *   4. notify on new / price-changed listings; mark seen only AFTER a send
  *   5. reschedule with jitter
  *
- * Resilience: every source returns [] on failure, each profile is processed in
- * its own try/catch, and each notification is isolated — so one user's blocked
- * bot, one bad fetch, or one broken source can't stop the loop for everyone.
+ * Each profile is one search across every site; each alert is tagged with the
+ * site it came from. Resilience: every source returns [] on failure, each profile
+ * is processed in its own try/catch, and each notification is isolated — so one
+ * user's blocked bot, one bad fetch, or one broken source can't stop the loop.
  */
 @Injectable()
 export class SchedulerService implements OnModuleInit, OnModuleDestroy {
@@ -90,42 +92,39 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
   /** Exposed for tests/manual triggering. */
   async runCycle(): Promise<void> {
     const all = await this.profiles.listAll();
-    // Each profile targets ONE site; skip paused ones and ones whose source is
-    // no longer active (or legacy profiles from before per-site filters).
-    const active = all.filter((p) => !p.paused && p.source && this.sources.has(p.source));
+    const active = all.filter((p) => !p.paused);
     if (active.length === 0) {
       this.logger.debug('No active profiles this cycle.');
       return;
     }
 
-    // Group by (source + upstream request key) so profiles that resolve to the
-    // SAME real request fetch once per cycle — e.g. two DOM.RIA searches for the
-    // same city+operation with different price/area share one API call.
-    const groups = new Map<string, SearchProfile[]>();
-    for (const p of active) {
-      const key = `${p.source}::${this.sources.requestKey(p.source, p.criteria)}`;
-      const bucket = groups.get(key);
-      if (bucket) bucket.push(p);
-      else groups.set(key, [p]);
+    const sourceIds = this.sources.ids;
+    // Fetch each unique (source, upstream request) at most once per cycle and
+    // cache it, so profiles that resolve to the same real request share the call
+    // — e.g. two users both searching Kyiv rent hit each site once, not twice.
+    const cache = new Map<string, Listing[]>();
+    const cacheKey = (sourceId: string, criteria: SearchProfile['criteria']) =>
+      `${sourceId}::${this.sources.requestKey(sourceId, criteria)}`;
+    for (const sourceId of sourceIds) {
+      for (const p of active) {
+        const key = cacheKey(sourceId, p.criteria);
+        if (!cache.has(key)) cache.set(key, await this.sources.fetchOne(sourceId, p.criteria));
+      }
     }
 
     this.logger.debug(
-      `Cycle: ${active.length} active profile(s) across ${groups.size} unique per-site search(es).`,
+      `Cycle: ${active.length} active profile(s), ${cache.size} unique fetch(es) across ${sourceIds.length} source(s).`,
     );
 
-    for (const bucket of groups.values()) {
-      // All profiles in a bucket share the same source + criteria — fetch that
-      // one site once, then diff each profile against it.
-      const { source, criteria } = bucket[0];
-      const listings = await this.sources.fetchOne(source, criteria);
-      for (const profile of bucket) {
-        try {
-          await this.processProfile(profile, listings);
-        } catch (err) {
-          this.logger.error(
-            `Profile ${profile.id} (user ${profile.userId}) failed: ${(err as Error).message}`,
-          );
-        }
+    for (const profile of active) {
+      // One search across every site: merge each source's listings, then diff.
+      const listings = sourceIds.flatMap((sid) => cache.get(cacheKey(sid, profile.criteria)) ?? []);
+      try {
+        await this.processProfile(profile, listings);
+      } catch (err) {
+        this.logger.error(
+          `Profile ${profile.id} (user ${profile.userId}) failed: ${(err as Error).message}`,
+        );
       }
     }
   }

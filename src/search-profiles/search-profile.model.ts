@@ -11,8 +11,6 @@ export interface SearchProfile {
   userId: number;
   /** Chat to deliver notifications to (same as userId for private chats). */
   chatId: number;
-  /** Which site this filter targets. One filter per (user, source). */
-  source: string;
   /** Human label shown in /mysearches, defaults to the city/district. */
   name: string;
   criteria: SearchCriteria;

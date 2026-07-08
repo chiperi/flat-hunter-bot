@@ -6,7 +6,6 @@ const profile: SearchProfile = {
   id: 'p1',
   userId: 7,
   chatId: 55,
-  source: 'olx',
   name: 'Мій пошук',
   criteria: { city: 'Київ', ownerOnly: false },
   paused: false,
