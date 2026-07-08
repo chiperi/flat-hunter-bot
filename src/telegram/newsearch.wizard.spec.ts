@@ -8,12 +8,14 @@ const makeCtx = () => ({
   reply: jest.fn().mockResolvedValue(undefined),
 });
 
-const build = () => {
+const build = (existing: any = null) => {
   const profiles = {
-    create: jest.fn().mockResolvedValue({
+    findByUserAndSource: jest.fn().mockResolvedValue(existing),
+    upsertForSource: jest.fn().mockResolvedValue({
       id: 'x',
-      name: 'Київ',
-      criteria: { city: 'Київ', ownerOnly: true },
+      source: 'domria',
+      name: 'DOM.RIA · Київ',
+      criteria: { city: 'Київ', ownerOnly: false },
       paused: false,
       primed: false,
       userId: 7,
@@ -21,8 +23,7 @@ const build = () => {
       createdAt: 0,
     }),
   };
-  const wizard = new NewSearchWizard(profiles as any);
-  return { wizard, profiles };
+  return { wizard: new NewSearchWizard(profiles as any), profiles };
 };
 
 const feed = async (wizard: NewSearchWizard, ctx: any, text: string) => {
@@ -30,80 +31,65 @@ const feed = async (wizard: NewSearchWizard, ctx: any, text: string) => {
   await wizard.onText(ctx as any);
 };
 
-describe('NewSearchWizard', () => {
-  it('completes the Kyiv branch and creates a profile', async () => {
+describe('NewSearchWizard (DOM.RIA flow)', () => {
+  it('completes the flow and upserts a DOM.RIA filter', async () => {
     const { wizard, profiles } = build();
     const ctx = makeCtx();
     await wizard.onEnter(ctx as any);
-    expect(ctx.scene.state.stage).toBe('city');
+    expect(ctx.scene.state.stage).toBe('operation');
+
+    await feed(wizard, ctx, '🔑 Оренда');
+    expect(ctx.scene.state).toMatchObject({ operation: 'rent', stage: 'city' });
 
     await feed(wizard, ctx, '🏙 Київ');
-    expect(ctx.scene.state.city).toBe('Київ');
-    expect(ctx.scene.state.stage).toBe('districtKyiv');
+    expect(ctx.scene.state).toMatchObject({ city: 'Київ', stage: 'rooms' });
 
-    await feed(wizard, ctx, 'Печерський');
-    expect(ctx.scene.state.district).toBe('Печерський');
-    expect(ctx.scene.state.stage).toBe('price');
+    await feed(wizard, ctx, '2');
+    expect(ctx.scene.state).toMatchObject({ rooms: 2, stage: 'price' });
 
     await feed(wizard, ctx, 'до 20000');
-    expect(ctx.scene.state.priceMax).toBe(20000);
-    expect(ctx.scene.state.stage).toBe('area');
+    expect(ctx.scene.state).toMatchObject({ priceMax: 20000, stage: 'area' });
 
     await feed(wizard, ctx, '30–60');
-    expect(ctx.scene.state).toMatchObject({ areaMin: 30, areaMax: 60, stage: 'owner' });
-
-    await feed(wizard, ctx, '🔑 Тільки власники');
-    expect(profiles.create).toHaveBeenCalledWith(
+    expect(profiles.upsertForSource).toHaveBeenCalledWith(
       7,
       7,
+      'domria',
       expect.objectContaining({
+        operation: 'rent',
         city: 'Київ',
-        district: 'Печерський',
+        rooms: 2,
         priceMax: 20000,
         areaMin: 30,
         areaMax: 60,
-        ownerOnly: true,
+        ownerOnly: false,
       }),
+      expect.any(String),
     );
     expect(ctx.scene.leave).toHaveBeenCalled();
   });
 
-  it('"будь-який район" clears the district', async () => {
+  it('handles 4+ rooms and the sale operation', async () => {
     const { wizard } = build();
     const ctx = makeCtx();
     await wizard.onEnter(ctx as any);
+    await feed(wizard, ctx, '🏢 Продаж');
+    expect(ctx.scene.state.operation).toBe('sale');
     await feed(wizard, ctx, 'Київ');
-    await feed(wizard, ctx, '🏙 Будь-який район');
-    expect(ctx.scene.state.district).toBeUndefined();
+    await feed(wizard, ctx, '4+');
+    expect(ctx.scene.state.rooms).toBe(4);
+  });
+
+  it('"будь-яка" rooms clears the filter', async () => {
+    const { wizard } = build();
+    const ctx = makeCtx();
+    ctx.scene.state = { stage: 'rooms', operation: 'rent', city: 'Київ' };
+    await feed(wizard, ctx, 'Будь-яка');
+    expect(ctx.scene.state.rooms).toBeUndefined();
     expect(ctx.scene.state.stage).toBe('price');
   });
 
-  it('handles the "Інше місто" manual branch', async () => {
-    const { wizard } = build();
-    const ctx = makeCtx();
-    await wizard.onEnter(ctx as any);
-    await feed(wizard, ctx, '✏️ Інше місто');
-    expect(ctx.scene.state.stage).toBe('cityManual');
-    await feed(wizard, ctx, ''); // empty re-asks, stays
-    expect(ctx.scene.state.stage).toBe('cityManual');
-    await feed(wizard, ctx, 'Львів');
-    expect(ctx.scene.state.city).toBe('Львів');
-    expect(ctx.scene.state.stage).toBe('districtManual');
-    await feed(wizard, ctx, '-');
-    expect(ctx.scene.state.district).toBeUndefined();
-    expect(ctx.scene.state.stage).toBe('price');
-  });
-
-  it('accepts a directly-typed city', async () => {
-    const { wizard } = build();
-    const ctx = makeCtx();
-    await wizard.onEnter(ctx as any);
-    await feed(wizard, ctx, 'Одеса');
-    expect(ctx.scene.state.city).toBe('Одеса');
-    expect(ctx.scene.state.stage).toBe('districtManual');
-  });
-
-  it('supports manual price and area entry via "Інше"', async () => {
+  it('supports manual price and area via "Інше"', async () => {
     const { wizard } = build();
     const ctx = makeCtx();
     ctx.scene.state = { stage: 'price' };
@@ -111,20 +97,34 @@ describe('NewSearchWizard', () => {
     expect(ctx.scene.state.stage).toBe('priceManual');
     await feed(wizard, ctx, 'від 5000 до 15000');
     expect(ctx.scene.state).toMatchObject({ priceMin: 5000, priceMax: 15000, stage: 'area' });
-
     await feed(wizard, ctx, '✏️ Інше');
     expect(ctx.scene.state.stage).toBe('areaManual');
-    await feed(wizard, ctx, 'від 40 до 90');
-    expect(ctx.scene.state).toMatchObject({ areaMin: 40, areaMax: 90, stage: 'owner' });
+    await feed(wizard, ctx, 'до 90');
+    expect(ctx.scene.state.areaMax).toBe(90);
   });
 
-  it('re-asks on an unrecognized owner answer', async () => {
-    const { wizard, profiles } = build();
+  it('rejects a non-Kyiv city', async () => {
+    const { wizard } = build();
     const ctx = makeCtx();
-    ctx.scene.state = { stage: 'owner', city: 'Київ' };
-    await feed(wizard, ctx, 'нісенітниця');
-    expect(profiles.create).not.toHaveBeenCalled();
-    expect(ctx.scene.state.stage).toBe('owner');
+    ctx.scene.state = { stage: 'city', operation: 'rent' };
+    await feed(wizard, ctx, 'Львів');
+    expect(ctx.scene.state.stage).toBe('city');
+    expect(ctx.scene.state.city).toBeUndefined();
+  });
+
+  it('re-asks on an unrecognized operation', async () => {
+    const { wizard } = build();
+    const ctx = makeCtx();
+    ctx.scene.state = { stage: 'operation' };
+    await feed(wizard, ctx, 'щось');
+    expect(ctx.scene.state.stage).toBe('operation');
+  });
+
+  it('flags editing when a filter already exists', async () => {
+    const { wizard } = build({ id: 'x', source: 'domria' });
+    const ctx = makeCtx();
+    await wizard.onEnter(ctx as any);
+    expect(ctx.scene.state.editing).toBe(true);
   });
 
   it('/cancel leaves the scene', async () => {
@@ -139,7 +139,7 @@ describe('NewSearchWizard', () => {
     const { wizard } = build();
     const ctx = makeCtx();
     ctx.scene.state = { stage: 'bogus' };
-    await feed(wizard, ctx, 'anything');
-    expect(ctx.scene.state.stage).toBe('city');
+    await feed(wizard, ctx, 'x');
+    expect(ctx.scene.state.stage).toBe('operation');
   });
 });

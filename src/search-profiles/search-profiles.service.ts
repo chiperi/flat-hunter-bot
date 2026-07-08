@@ -27,6 +27,7 @@ export class SearchProfilesService {
   async create(
     userId: number,
     chatId: number,
+    source: string,
     criteria: SearchCriteria,
     name?: string,
   ): Promise<SearchProfile> {
@@ -34,6 +35,7 @@ export class SearchProfilesService {
       id: this.newId(),
       userId,
       chatId,
+      source,
       name: name?.trim() || defaultProfileName(criteria),
       criteria,
       paused: false,
@@ -41,8 +43,37 @@ export class SearchProfilesService {
       createdAt: Date.now(),
     };
     await this.profiles.save(profile);
-    this.logger.log(`Created profile ${profile.id} for user ${userId}`);
+    this.logger.log(`Created ${source} profile ${profile.id} for user ${userId}`);
     return profile;
+  }
+
+  /** The user's existing filter for a site, if any (one filter per site). */
+  async findByUserAndSource(userId: number, source: string): Promise<SearchProfile | null> {
+    const list = await this.profiles.listByUser(userId);
+    return list.find((p) => p.source === source) ?? null;
+  }
+
+  /**
+   * Create or overwrite the user's single filter for a site: if one exists,
+   * update its criteria/name in place (keeps id + primed state); else create.
+   */
+  async upsertForSource(
+    userId: number,
+    chatId: number,
+    source: string,
+    criteria: SearchCriteria,
+    name?: string,
+  ): Promise<SearchProfile> {
+    const existing = await this.findByUserAndSource(userId, source);
+    if (existing) {
+      existing.criteria = criteria;
+      existing.name = name?.trim() || defaultProfileName(criteria);
+      existing.primed = false; // re-prime with the new criteria
+      await this.profiles.save(existing);
+      this.logger.log(`Updated ${source} profile ${existing.id} for user ${userId}`);
+      return existing;
+    }
+    return this.create(userId, chatId, source, criteria, name);
   }
 
   get(id: string): Promise<SearchProfile | null> {

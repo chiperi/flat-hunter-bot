@@ -151,7 +151,8 @@ const domria: SiteSpec = {
     const search = new URLSearchParams({
       api_key: apiKey,
       category: '1',
-      operation_type: '3',
+      // 3 = long-term rent, 1 = sale (RIA operation types).
+      operation_type: c.operation === 'sale' ? '1' : '3',
       state_id: String(geo.state),
       city_id: String(geo.city),
       lang_id: '4',
@@ -172,6 +173,7 @@ const domria: SiteSpec = {
           price: toInt(info?.price ?? info?.priceArr?.['3']),
           currency: 'грн',
           area: area === null ? null : Math.round(area),
+          rooms: toInt(info?.rooms_count),
           city: info?.city_name ?? undefined,
           // RIA's district is a micro-district (neighbourhood), not the admin
           // raion the user picks — leave it unset so the raion filter is skipped

@@ -6,6 +6,7 @@ const profile = (over: Partial<SearchProfile> = {}): SearchProfile => ({
   id: 'p1',
   userId: 1,
   chatId: 1,
+  source: 'olx',
   name: 'n',
   criteria: { city: 'Київ', ownerOnly: false },
   paused: false,
@@ -41,7 +42,11 @@ const build = () => {
     notifyNewListing: jest.fn().mockResolvedValue(undefined),
     notifyPriceChange: jest.fn().mockResolvedValue(undefined),
   };
-  const sources = { fetchAll: jest.fn().mockResolvedValue([]), count: 1 };
+  const sources = {
+    has: jest.fn().mockReturnValue(true),
+    fetchOne: jest.fn().mockResolvedValue([]),
+    count: 1,
+  };
   const scheduler = new SchedulerService(
     config as any,
     profiles as any,
@@ -57,13 +62,13 @@ describe('SchedulerService.runCycle', () => {
     const { scheduler, profiles, sources } = build();
     profiles.listAll.mockResolvedValue([profile({ paused: true })]);
     await scheduler.runCycle();
-    expect(sources.fetchAll).not.toHaveBeenCalled();
+    expect(sources.fetchOne).not.toHaveBeenCalled();
   });
 
   it('primes a fresh profile silently', async () => {
     const { scheduler, profiles, seen, telegram, sources } = build();
     profiles.listAll.mockResolvedValue([profile({ primed: false })]);
-    sources.fetchAll.mockResolvedValue([listing({ id: '1' })]);
+    sources.fetchOne.mockResolvedValue([listing({ id: '1' })]);
     await scheduler.runCycle();
     expect(seen.seed).toHaveBeenCalledWith('p1', [{ id: 'olx:1', price: 10000 }]);
     expect(profiles.update).toHaveBeenCalled();
@@ -73,7 +78,7 @@ describe('SchedulerService.runCycle', () => {
   it('notifies + marks seen for a new listing', async () => {
     const { scheduler, profiles, seen, telegram, sources } = build();
     profiles.listAll.mockResolvedValue([profile()]);
-    sources.fetchAll.mockResolvedValue([listing({ id: '1', price: 10000 })]);
+    sources.fetchOne.mockResolvedValue([listing({ id: '1', price: 10000 })]);
     seen.getAll.mockResolvedValue(new Map());
     await scheduler.runCycle();
     expect(telegram.notifyNewListing).toHaveBeenCalledTimes(1);
@@ -83,7 +88,7 @@ describe('SchedulerService.runCycle', () => {
   it('notifies on a price change', async () => {
     const { scheduler, profiles, seen, telegram, sources } = build();
     profiles.listAll.mockResolvedValue([profile()]);
-    sources.fetchAll.mockResolvedValue([listing({ id: '1', price: 10000 })]);
+    sources.fetchOne.mockResolvedValue([listing({ id: '1', price: 10000 })]);
     seen.getAll.mockResolvedValue(new Map([['olx:1', 9000]]));
     await scheduler.runCycle();
     expect(telegram.notifyPriceChange).toHaveBeenCalledWith(expect.anything(), expect.anything(), 9000);
@@ -93,7 +98,7 @@ describe('SchedulerService.runCycle', () => {
   it('stays silent for a seen, unchanged listing', async () => {
     const { scheduler, profiles, seen, telegram, sources } = build();
     profiles.listAll.mockResolvedValue([profile()]);
-    sources.fetchAll.mockResolvedValue([listing({ id: '1', price: 10000 })]);
+    sources.fetchOne.mockResolvedValue([listing({ id: '1', price: 10000 })]);
     seen.getAll.mockResolvedValue(new Map([['olx:1', 10000]]));
     await scheduler.runCycle();
     expect(telegram.notifyNewListing).not.toHaveBeenCalled();
@@ -107,13 +112,13 @@ describe('SchedulerService.runCycle', () => {
       profile({ id: 'p2' }),
     ]);
     await scheduler.runCycle();
-    expect(sources.fetchAll).toHaveBeenCalledTimes(1);
+    expect(sources.fetchOne).toHaveBeenCalledTimes(1);
   });
 
   it('does not mark seen when the notification fails', async () => {
     const { scheduler, profiles, seen, telegram, sources } = build();
     profiles.listAll.mockResolvedValue([profile()]);
-    sources.fetchAll.mockResolvedValue([listing({ id: '1' })]);
+    sources.fetchOne.mockResolvedValue([listing({ id: '1' })]);
     seen.getAll.mockResolvedValue(new Map());
     telegram.notifyNewListing.mockRejectedValue(new Error('blocked'));
     await expect(scheduler.runCycle()).resolves.toBeUndefined();
@@ -123,7 +128,7 @@ describe('SchedulerService.runCycle', () => {
   it('skips listings outside the criteria', async () => {
     const { scheduler, profiles, sources, telegram } = build();
     profiles.listAll.mockResolvedValue([profile({ criteria: { city: 'Київ', priceMax: 5000, ownerOnly: false } })]);
-    sources.fetchAll.mockResolvedValue([listing({ id: '1', price: 99999 })]);
+    sources.fetchOne.mockResolvedValue([listing({ id: '1', price: 99999 })]);
     await scheduler.runCycle();
     expect(telegram.notifyNewListing).not.toHaveBeenCalled();
   });

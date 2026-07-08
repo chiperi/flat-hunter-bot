@@ -109,7 +109,7 @@ jobs:
           # Variables (Settings -> Secrets and variables -> Actions -> Variables):
           #   SCRAPER=http   SOURCES=olx,domria   POLL_INTERVAL_MS=600000
           export SCRAPER='${{ vars.SCRAPER || 'mock' }}'
-          export SOURCES='${{ vars.SOURCES || 'olx' }}'
+          export SOURCES='${{ vars.SOURCES || 'domria' }}'
           export POLL_INTERVAL_MS='${{ vars.POLL_INTERVAL_MS || '600000' }}'
 
           # Prefer the Docker Compose v2 plugin; fall back to legacy docker-compose.

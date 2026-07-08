@@ -91,30 +91,33 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
   /** Exposed for tests/manual triggering. */
   async runCycle(): Promise<void> {
     const all = await this.profiles.listAll();
-    const active = all.filter((p) => !p.paused);
+    // Each profile targets ONE site; skip paused ones and ones whose source is
+    // no longer active (or legacy profiles from before per-site filters).
+    const active = all.filter((p) => !p.paused && p.source && this.sources.has(p.source));
     if (active.length === 0) {
       this.logger.debug('No active profiles this cycle.');
       return;
     }
 
-    // Group by search signature so identical searches fetch once per cycle.
+    // Group by (source + search signature) so identical searches on the same
+    // site fetch once per cycle.
     const groups = new Map<string, SearchProfile[]>();
     for (const p of active) {
-      const sig = searchSignature(p.criteria);
-      const bucket = groups.get(sig);
+      const key = `${p.source}::${searchSignature(p.criteria)}`;
+      const bucket = groups.get(key);
       if (bucket) bucket.push(p);
-      else groups.set(sig, [p]);
+      else groups.set(key, [p]);
     }
 
     this.logger.debug(
-      `Cycle: ${active.length} active profile(s) across ${groups.size} unique search(es), ` +
-        `${this.sources.count} source(s).`,
+      `Cycle: ${active.length} active profile(s) across ${groups.size} unique per-site search(es).`,
     );
 
     for (const bucket of groups.values()) {
-      // Every profile in a bucket shares identical criteria — fetch from all
-      // active sources once, then diff each profile against the merged set.
-      const listings = await this.sources.fetchAll(bucket[0].criteria);
+      // All profiles in a bucket share the same source + criteria — fetch that
+      // one site once, then diff each profile against it.
+      const { source, criteria } = bucket[0];
+      const listings = await this.sources.fetchOne(source, criteria);
       for (const profile of bucket) {
         try {
           await this.processProfile(profile, listings);

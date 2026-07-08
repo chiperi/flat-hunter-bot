@@ -20,18 +20,53 @@ const build = () => {
 };
 
 describe('SearchProfilesService', () => {
-  it('create() mints an 8-hex id and saves a fresh profile', async () => {
+  it('create() mints an 8-hex id and saves a source-scoped profile', async () => {
     const { service, profiles } = build();
-    const p = await service.create(5, 9, { city: 'Київ', ownerOnly: true });
+    const p = await service.create(5, 9, 'domria', { city: 'Київ', ownerOnly: true });
     expect(p.id).toMatch(/^[0-9a-f]{8}$/);
-    expect(p).toMatchObject({ userId: 5, chatId: 9, name: 'Київ', paused: false, primed: false });
+    expect(p).toMatchObject({ userId: 5, chatId: 9, source: 'domria', name: 'Київ', primed: false });
     expect(profiles.save).toHaveBeenCalledWith(p);
   });
 
   it('create() honours an explicit name', async () => {
     const { service } = build();
-    const p = await service.create(1, 1, { city: 'Київ', ownerOnly: false }, 'Гараж');
+    const p = await service.create(1, 1, 'olx', { city: 'Київ', ownerOnly: false }, 'Гараж');
     expect(p.name).toBe('Гараж');
+  });
+
+  it('findByUserAndSource() returns the matching site filter', async () => {
+    const { service, profiles } = build();
+    profiles.listByUser.mockResolvedValue([
+      { id: 'a', source: 'olx' },
+      { id: 'b', source: 'domria' },
+    ]);
+    expect((await service.findByUserAndSource(1, 'domria'))?.id).toBe('b');
+    expect(await service.findByUserAndSource(1, 'lun')).toBeNull();
+  });
+
+  it('upsertForSource() creates when no filter exists for the site', async () => {
+    const { service, profiles } = build();
+    profiles.listByUser.mockResolvedValue([]);
+    const p = await service.upsertForSource(1, 1, 'domria', { city: 'Київ', ownerOnly: false });
+    expect(p.source).toBe('domria');
+    expect(profiles.save).toHaveBeenCalled();
+  });
+
+  it('upsertForSource() overwrites the existing filter and re-primes', async () => {
+    const { service, profiles } = build();
+    const existing = {
+      id: 'x',
+      userId: 1,
+      source: 'domria',
+      criteria: { city: 'Old', ownerOnly: false },
+      primed: true,
+      name: 'old',
+    };
+    profiles.listByUser.mockResolvedValue([existing]);
+    const p = await service.upsertForSource(1, 1, 'domria', { city: 'Київ', ownerOnly: false });
+    expect(p.id).toBe('x');
+    expect(p.criteria.city).toBe('Київ');
+    expect(p.primed).toBe(false);
   });
 
   it('setPaused() returns null for a missing or foreign profile', async () => {

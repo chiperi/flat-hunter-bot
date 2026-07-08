@@ -4,49 +4,30 @@ import { Markup, Scenes } from 'telegraf';
 import { SearchCriteria } from '../sources/listing.interface';
 import { SearchProfilesService } from '../search-profiles/search-profiles.service';
 import { CANCELLED, describeProfile } from './telegram.copy';
-import {
-  INCLUDE_ALL_LABEL,
-  OWNER_ONLY_LABEL,
-  parseOptionalText,
-  parseOwnerChoice,
-  parseRange,
-} from './parsing.util';
+import { parseRange } from './parsing.util';
 
 export const NEWSEARCH_SCENE = 'newsearch';
 
-// --- button labels ---------------------------------------------------------
-const CITY_KYIV = '🏙 Київ';
-const CITY_OTHER = '✏️ Інше місто';
-const ANY_DISTRICT = '🏙 Будь-який район';
-const OTHER = '✏️ Інше';
-const KYIV_DISTRICTS = [
-  'Голосіївський',
-  'Дарницький',
-  'Деснянський',
-  'Дніпровський',
-  'Оболонський',
-  'Печерський',
-  'Подільський',
-  'Святошинський',
-  'Солом’янський',
-  'Шевченківський',
-];
+// For now `/newsearch` configures the DOM.RIA filter (per-site filters; other
+// sites get their own flows later). The model is source-scoped, so adding a
+// site = adding a flow here + a source spec.
+const SOURCE = 'domria';
 
-type Stage =
-  | 'city'
-  | 'cityManual'
-  | 'districtKyiv'
-  | 'districtManual'
-  | 'price'
-  | 'priceManual'
-  | 'area'
-  | 'areaManual'
-  | 'owner';
+// --- button labels ---------------------------------------------------------
+const OP_RENT = '🔑 Оренда';
+const OP_SALE = '🏢 Продаж';
+const CITY_KYIV = '🏙 Київ';
+const ROOMS_ANY = 'Будь-яка';
+const OTHER = '✏️ Інше';
+
+type Stage = 'operation' | 'city' | 'rooms' | 'price' | 'priceManual' | 'area' | 'areaManual';
 
 interface WizardState {
   stage: Stage;
+  editing?: boolean;
+  operation?: 'rent' | 'sale';
   city?: string;
-  district?: string;
+  rooms?: number;
   priceMin?: number;
   priceMax?: number;
   areaMin?: number;
@@ -56,18 +37,10 @@ interface WizardState {
 const HTML = { parse_mode: 'HTML' as const };
 
 /**
- * /newsearch as a small state machine (a plain scene rather than a strict
- * linear wizard, because the flow branches: Kyiv → district buttons vs. other
- * city → manual entry, and area presets vs. manual). `state.stage` tracks where
- * the user is; each incoming text is routed by it. `/cancel` bails out anywhere.
- *
- * Flow:
- *   city [Київ | Інше місто]
- *     Київ  → district buttons (10 raions + "будь-який")
- *     Інше  → type city → type district
- *   price [до 10000 | до 20000 | до 30000 | Інше→free text]
- *   area  [30–60 | до 45 | до 80 | Інше→free text]
- *   owner [лише власники | усі]  → save
+ * DOM.RIA search wizard — a small state machine with DOM.RIA-specific fields:
+ *   operation [оренда | продаж] → city [Київ] → rooms [1|2|3|4+|будь-яка]
+ *   → price → area → save.
+ * One filter per user for DOM.RIA: re-running edits (overwrites) the existing one.
  */
 @Scene(NEWSEARCH_SCENE)
 export class NewSearchWizard {
@@ -78,12 +51,15 @@ export class NewSearchWizard {
   @SceneEnter()
   async onEnter(@Ctx() ctx: Scenes.SceneContext) {
     const st = this.state(ctx);
-    st.stage = 'city';
+    st.stage = 'operation';
+    const existing = await this.profiles.findByUserAndSource(ctx.from?.id as number, SOURCE);
+    st.editing = Boolean(existing);
+    const intro = existing
+      ? '✏️ Оновлюємо твій фільтр <b>DOM.RIA</b>. Відповідай наново.\n'
+      : '🆕 Новий фільтр <b>DOM.RIA</b>. Відповідайте на кілька запитань.\n';
     await ctx.reply(
-      '🆕 <b>Новий пошук.</b> Відповідайте на кілька запитань.\n' +
-        'У будь-який момент — /cancel, щоб скасувати.\n\n' +
-        '1️⃣ У якому <b>місті</b> шукаємо?',
-      { ...HTML, ...Markup.keyboard([[CITY_KYIV], [CITY_OTHER]]).oneTime().resize() },
+      intro + 'У будь-який момент — /cancel.\n\n1️⃣ Тип <b>операції</b>?',
+      { ...HTML, ...Markup.keyboard([[OP_RENT], [OP_SALE]]).oneTime().resize() },
     );
   }
 
@@ -97,17 +73,14 @@ export class NewSearchWizard {
   async onText(@Ctx() ctx: Scenes.SceneContext) {
     const text = this.text(ctx);
     if (text.toLowerCase() === '/cancel') return this.onCancel(ctx);
-
     const st = this.state(ctx);
     switch (st.stage) {
+      case 'operation':
+        return this.handleOperation(ctx, st, text);
       case 'city':
         return this.handleCity(ctx, st, text);
-      case 'cityManual':
-        return this.handleCityManual(ctx, st, text);
-      case 'districtKyiv':
-        return this.handleDistrict(ctx, st, /будь-як/i.test(text) ? undefined : text);
-      case 'districtManual':
-        return this.handleDistrict(ctx, st, parseOptionalText(text));
+      case 'rooms':
+        return this.handleRooms(ctx, st, text);
       case 'price':
         return this.handlePrice(ctx, st, text);
       case 'priceManual':
@@ -116,8 +89,6 @@ export class NewSearchWizard {
         return this.handleArea(ctx, st, text);
       case 'areaManual':
         return this.handleAreaManual(ctx, st, text);
-      case 'owner':
-        return this.handleOwner(ctx, st, text);
       default:
         return this.onEnter(ctx);
     }
@@ -125,40 +96,43 @@ export class NewSearchWizard {
 
   // --- stage handlers -----------------------------------------------------
 
+  private async handleOperation(ctx: Scenes.SceneContext, st: WizardState, text: string) {
+    const t = text.toLowerCase();
+    if (t.includes('оренд') || t.includes('rent')) st.operation = 'rent';
+    else if (t.includes('продаж') || t.includes('sale')) st.operation = 'sale';
+    else {
+      await ctx.reply(`Оберіть кнопкою: «${OP_RENT}» або «${OP_SALE}».`);
+      return;
+    }
+    st.stage = 'city';
+    await ctx.reply('2️⃣ <b>Місто</b>? (поки доступний лише Київ)', {
+      ...HTML,
+      ...Markup.keyboard([[CITY_KYIV]]).oneTime().resize(),
+    });
+  }
+
   private async handleCity(ctx: Scenes.SceneContext, st: WizardState, text: string) {
-    if (/київ/i.test(text)) {
-      st.city = 'Київ';
-      st.stage = 'districtKyiv';
-      await ctx.reply('2️⃣ Оберіть <b>район</b> Києва:', {
-        ...HTML,
-        ...this.kyivDistrictKeyboard(),
-      });
+    if (!/київ/i.test(text)) {
+      await ctx.reply('Поки DOM.RIA доступний лише для Києва. Натисніть «🏙 Київ».');
       return;
     }
-    if (/інше/i.test(text) || text === CITY_OTHER) {
-      st.stage = 'cityManual';
-      await ctx.reply('2️⃣ Введіть <b>місто</b> текстом (напр. <i>Львів</i>):', {
-        ...HTML,
-        ...Markup.removeKeyboard(),
-      });
-      return;
-    }
-    // Typed a city name directly — accept it and go to manual district.
-    st.city = text;
-    await this.askManualDistrict(ctx, st);
+    st.city = 'Київ';
+    st.stage = 'rooms';
+    await ctx.reply('3️⃣ Скільки <b>кімнат</b>?', {
+      ...HTML,
+      ...Markup.keyboard([['1', '2', '3', '4+'], [ROOMS_ANY]]).oneTime().resize(),
+    });
   }
 
-  private async handleCityManual(ctx: Scenes.SceneContext, st: WizardState, text: string) {
-    if (!text) {
-      await ctx.reply('Будь ласка, введіть назву міста текстом.');
+  private async handleRooms(ctx: Scenes.SceneContext, st: WizardState, text: string) {
+    const t = text.trim().toLowerCase();
+    if (/будь/.test(t)) st.rooms = undefined;
+    else if (t.startsWith('4')) st.rooms = 4;
+    else if (t === '1' || t === '2' || t === '3') st.rooms = Number.parseInt(t, 10);
+    else {
+      await ctx.reply('Оберіть кількість кімнат кнопкою (1, 2, 3, 4+ або «Будь-яка»).');
       return;
     }
-    st.city = text;
-    await this.askManualDistrict(ctx, st);
-  }
-
-  private async handleDistrict(ctx: Scenes.SceneContext, st: WizardState, district?: string) {
-    st.district = district;
     await this.askPrice(ctx, st);
   }
 
@@ -166,8 +140,8 @@ export class NewSearchWizard {
     if (text === OTHER || /^інше/i.test(text)) {
       st.stage = 'priceManual';
       await ctx.reply(
-        'Введіть <b>ціну</b> (грн): напр. <code>від 5000 до 15000</code>, <code>до 20000</code>, ' +
-          '<code>від 5000</code> або <code>-</code> щоб не обмежувати.',
+        'Введіть <b>ціну</b> (грн): напр. <code>від 5000 до 15000</code>, <code>до 20000</code> ' +
+          'або <code>-</code> щоб не обмежувати.',
         { ...HTML, ...Markup.removeKeyboard() },
       );
       return;
@@ -185,66 +159,55 @@ export class NewSearchWizard {
     if (text === OTHER || /^інше/i.test(text)) {
       st.stage = 'areaManual';
       await ctx.reply(
-        'Введіть <b>площу</b> (м²): напр. <code>від 30 до 60</code>, <code>до 80</code>, ' +
-          '<code>від 40</code> або <code>-</code> щоб не обмежувати.',
+        'Введіть <b>площу</b> (м²): напр. <code>від 30 до 60</code>, <code>до 80</code> ' +
+          'або <code>-</code> щоб не обмежувати.',
         { ...HTML, ...Markup.removeKeyboard() },
       );
       return;
     }
     this.applyArea(st, text);
-    await this.askOwner(ctx, st);
+    await this.save(ctx, st);
   }
 
   private async handleAreaManual(ctx: Scenes.SceneContext, st: WizardState, text: string) {
     this.applyArea(st, text);
-    await this.askOwner(ctx, st);
+    await this.save(ctx, st);
   }
 
-  private async handleOwner(ctx: Scenes.SceneContext, st: WizardState, text: string) {
-    const ownerOnly = parseOwnerChoice(text);
-    if (ownerOnly === null) {
-      await ctx.reply(`Оберіть кнопку: «${OWNER_ONLY_LABEL}» або «${INCLUDE_ALL_LABEL}».`);
-      return;
-    }
-
+  private async save(ctx: Scenes.SceneContext, st: WizardState) {
     const criteria: SearchCriteria = {
+      operation: st.operation ?? 'rent',
       city: st.city as string,
-      district: st.district,
+      rooms: st.rooms,
       priceMin: st.priceMin,
       priceMax: st.priceMax,
       areaMin: st.areaMin,
       areaMax: st.areaMax,
-      ownerOnly,
+      ownerOnly: false,
     };
+    const roomsPart = st.rooms != null ? ` · ${st.rooms >= 4 ? '4+' : st.rooms}-кімн.` : '';
+    const opPart = st.operation === 'sale' ? 'продаж' : 'оренда';
+    const name = `DOM.RIA · ${st.city} · ${opPart}${roomsPart}`;
+
     const userId = ctx.from?.id as number;
     const chatId = ctx.chat?.id as number;
-    const profile = await this.profiles.create(userId, chatId, criteria);
+    const profile = await this.profiles.upsertForSource(userId, chatId, SOURCE, criteria, name);
 
     await ctx.reply(
-      '✅ <b>Пошук збережено!</b>\n\n' +
+      `✅ <b>Фільтр ${st.editing ? 'оновлено' : 'збережено'}!</b>\n\n` +
         describeProfile(profile) +
-        '\n\nПочну перевіряти найближчим часом і напишу, щойно з’явиться щось нове. ' +
-        'Керувати пошуками — /mysearches',
+        '\n\nПочну перевіряти найближчим часом. Керувати — /mysearches',
       { ...HTML, ...Markup.removeKeyboard() },
     );
-    this.logger.log(`newsearch completed: profile ${profile.id} for user ${userId}`);
+    this.logger.log(`newsearch(${SOURCE}) done: profile ${profile.id} for user ${userId}`);
     await ctx.scene.leave();
   }
 
   // --- shared prompts -----------------------------------------------------
 
-  private async askManualDistrict(ctx: Scenes.SceneContext, st: WizardState) {
-    st.stage = 'districtManual';
-    await ctx.reply(
-      '2️⃣ <b>Район</b>? Введіть район/мікрорайон або надішліть <code>-</code>, ' +
-        'щоб шукати по всьому місту.',
-      { ...HTML, ...Markup.removeKeyboard() },
-    );
-  }
-
   private async askPrice(ctx: Scenes.SceneContext, st: WizardState) {
     st.stage = 'price';
-    await ctx.reply('3️⃣ Оберіть <b>ціну</b> (грн) або натисніть «Інше», щоб ввести діапазон вручну:', {
+    await ctx.reply('4️⃣ Оберіть <b>ціну</b> (грн) або «Інше» для ручного вводу:', {
       ...HTML,
       ...Markup.keyboard([['до 10000', 'до 20000', 'до 30000'], [OTHER]]).oneTime().resize(),
     });
@@ -252,17 +215,9 @@ export class NewSearchWizard {
 
   private async askArea(ctx: Scenes.SceneContext, st: WizardState) {
     st.stage = 'area';
-    await ctx.reply('4️⃣ Оберіть <b>площу</b> (м²) або натисніть «Інше», щоб ввести вручну:', {
+    await ctx.reply('5️⃣ Оберіть <b>площу</b> (м²) або «Інше» для ручного вводу:', {
       ...HTML,
       ...Markup.keyboard([['30–60', 'до 45', 'до 80'], [OTHER]]).oneTime().resize(),
-    });
-  }
-
-  private async askOwner(ctx: Scenes.SceneContext, st: WizardState) {
-    st.stage = 'owner';
-    await ctx.reply('5️⃣ Показувати оголошення <b>лише від власників</b> чи також від ріелторів?', {
-      ...HTML,
-      ...Markup.keyboard([[OWNER_ONLY_LABEL], [INCLUDE_ALL_LABEL]]).oneTime().resize(),
     });
   }
 
@@ -279,15 +234,6 @@ export class NewSearchWizard {
   }
 
   // --- helpers ------------------------------------------------------------
-
-  private kyivDistrictKeyboard() {
-    const rows: string[][] = [];
-    for (let i = 0; i < KYIV_DISTRICTS.length; i += 2) {
-      rows.push(KYIV_DISTRICTS.slice(i, i + 2));
-    }
-    rows.push([ANY_DISTRICT]);
-    return Markup.keyboard(rows).oneTime().resize();
-  }
 
   private text(ctx: Scenes.SceneContext): string {
     const msg = ctx.message as { text?: string } | undefined;

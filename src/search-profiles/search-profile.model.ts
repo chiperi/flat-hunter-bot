@@ -11,6 +11,8 @@ export interface SearchProfile {
   userId: number;
   /** Chat to deliver notifications to (same as userId for private chats). */
   chatId: number;
+  /** Which site this filter targets. One filter per (user, source). */
+  source: string;
   /** Human label shown in /mysearches, defaults to the city/district. */
   name: string;
   criteria: SearchCriteria;
@@ -33,12 +35,14 @@ export interface SearchProfile {
  */
 export function searchSignature(c: SearchCriteria): string {
   return [
+    c.operation ?? 'rent',
     c.city.trim().toLowerCase(),
     (c.district ?? '').trim().toLowerCase(),
     c.priceMin ?? '',
     c.priceMax ?? '',
     c.areaMin ?? '',
     c.areaMax ?? '',
+    c.rooms ?? '',
     c.ownerOnly ? 'owner' : 'all',
   ].join('|');
 }
@@ -58,6 +62,11 @@ export function matchesCriteria(listing: Listing, c: SearchCriteria): boolean {
   if (listing.area !== null) {
     if (c.areaMin != null && listing.area < c.areaMin) return false;
     if (c.areaMax != null && listing.area > c.areaMax) return false;
+  }
+
+  // Rooms: c.rooms of 4 means "4+"; otherwise an exact match.
+  if (c.rooms != null && listing.rooms != null && listing.rooms !== undefined) {
+    if (c.rooms >= 4 ? listing.rooms < 4 : listing.rooms !== c.rooms) return false;
   }
 
   if (c.district && listing.district) {
