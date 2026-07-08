@@ -170,6 +170,15 @@ describe('NewSearchWizard', () => {
     expect(ctx.scene.leave).toHaveBeenCalled();
   });
 
+  it('the ❌ button cancels mid-flow without saving anything', async () => {
+    const { wizard, profiles } = build();
+    const ctx = makeCtx();
+    ctx.scene.state = { stage: 'rooms', source: 'domria', operation: 'rent', city: 'Київ' };
+    await feed(wizard, ctx, '❌ Відмінити');
+    expect(ctx.scene.leave).toHaveBeenCalled();
+    expect(profiles.upsertForSource).not.toHaveBeenCalled();
+  });
+
   it('resets on an unknown stage', async () => {
     const { wizard } = build();
     const ctx = makeCtx();
