@@ -59,16 +59,12 @@ export function listingKey(l: Pick<Listing, 'source' | 'id'>): string {
   return `${l.source}:${l.id}`;
 }
 
+// birdrent.com and josti.com.ua were dropped: both are booking-app products with
+// no browseable web catalog to scrape (only App Store / Google Play landing
+// pages). olx/lun/flatfy stay — they have real adapters but Cloudflare-block the
+// droplet's datacenter IP, so they enable once HTTP_PROXY_URL points at a proxy.
 /** Every site this build knows about, in default priority order. */
-export const KNOWN_SOURCE_IDS = [
-  'olx',
-  'rieltor',
-  'domria',
-  'lun',
-  'flatfy',
-  'birdrent',
-  'josti',
-] as const;
+export const KNOWN_SOURCE_IDS = ['olx', 'rieltor', 'domria', 'lun', 'flatfy'] as const;
 
 /** Display labels per source id (for messages that only have the id). */
 export const SOURCE_LABELS: Record<string, string> = {
@@ -77,6 +73,4 @@ export const SOURCE_LABELS: Record<string, string> = {
   domria: 'DOM.RIA',
   lun: 'ЛУН',
   flatfy: 'Flatfy',
-  birdrent: 'BirdRent',
-  josti: 'Josti',
 };

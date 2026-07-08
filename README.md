@@ -4,9 +4,9 @@ A Telegram bot that monitors **Ukrainian housing sites** against a user-defined
 filter and sends **instant notifications** when a new matching listing appears —
 or when the price of one you've already seen changes. You set the criteria once
 and it searches **every enabled site**; each alert says which site it came from.
-**DOM.RIA** and **Rieltor** are live today (real data). The engine also has working
-adapters for OLX, ЛУН, Flatfy, BirdRent and Josti — but OLX and ЛУН Cloudflare-block
-the droplet's datacenter IP (403), so they need a residential proxy to enable.
+**DOM.RIA** and **Rieltor** are live today (real data). The engine also has adapters
+for **OLX**, **ЛУН** and **Flatfy**, but they Cloudflare-block the droplet's
+datacenter IP (403) — they enable once `HTTP_PROXY_URL` points at a residential proxy.
 
 Built with **NestJS + TypeScript**, **Telegraf** (long polling, no webhook) and
 **Redis** for all state. Runs as an isolated Docker Compose stack with **no
@@ -100,11 +100,12 @@ namespaced by `source:id`, so the same listing on two sites can't collide.
 |---|---|---|
 | `domria` | dom.ria.com | **official API** (needs `DOMRIA_API_KEY`) — real, tuned |
 | `rieltor` | rieltor.ua | HTML (server-rendered cards) — real, verified live |
-| `olx` | OLX.ua | HTML (`__NEXT_DATA__` → cards) — blocked from datacenter IPs (403) |
-| `lun` | lun.ua | HTML (ld+json + `page_id`) — real parser (+NBU $/€→грн), but **403 from datacenter IP → needs a proxy** |
-| `flatfy` | flatfy.ua | HTML/SPA — best-effort, not yet wired |
-| `birdrent` | birdrent.com | HTML — best-effort, not yet wired |
-| `josti` | josti.com.ua | HTML — best-effort, not yet wired |
+| `olx` | OLX.ua | HTML (`__NEXT_DATA__` → cards) — **403 from datacenter IP → needs a proxy** |
+| `lun` | lun.ua | HTML (ld+json + `page_id`) — real parser (+NBU $/€→грн), but **403 → needs a proxy** |
+| `flatfy` | flatfy.ua | HTML (LUN cards) — aggregates DOM.RIA/OLX, and **403 → needs a proxy** |
+
+_(birdrent.com and josti.com.ua were evaluated and dropped — both are booking-app
+products with no browseable web catalog to scrape.)_
 
 ⚠️ **The HTML parsers are best-effort.** DOM.RIA exposes a stable public API and
 Rieltor's cards are parsed from verified live markup; the rest need tuning against

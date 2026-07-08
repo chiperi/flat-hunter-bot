@@ -299,56 +299,6 @@ const flatfy: SiteSpec = {
     }),
 };
 
-// --- birdrent.com ----------------------------------------------------------
-const birdrent: SiteSpec = {
-  id: 'birdrent',
-  label: 'BirdRent',
-  kind: 'html',
-  buildUrl: (c) => {
-    const p = priceAreaQuery(c, {
-      q: 'q',
-      priceMin: 'price_from',
-      priceMax: 'price_to',
-      areaMin: 'area_from',
-      areaMax: 'area_to',
-    });
-    return `https://birdrent.com/?${p.toString()}`;
-  },
-  parse: (html) =>
-    nextDataThenCards(html, 'https://birdrent.com', {
-      card: '[class*="card"], [class*="listing"], article',
-      title: 'h3, h2, [class*="title"]',
-      price: '[class*="price"]',
-      link: 'a[href]',
-      image: 'img',
-    }),
-};
-
-// --- josti.com.ua ----------------------------------------------------------
-const josti: SiteSpec = {
-  id: 'josti',
-  label: 'Josti',
-  kind: 'html',
-  buildUrl: (c) => {
-    const p = priceAreaQuery(c, {
-      q: 'q',
-      priceMin: 'price_from',
-      priceMax: 'price_to',
-      areaMin: 'area_from',
-      areaMax: 'area_to',
-    });
-    return `https://www.josti.com.ua/?${p.toString()}`;
-  },
-  parse: (html) =>
-    nextDataThenCards(html, 'https://www.josti.com.ua', {
-      card: '[class*="card"], [class*="listing"], article',
-      title: 'h3, h2, [class*="title"]',
-      price: '[class*="price"]',
-      link: 'a[href]',
-      image: 'img',
-    }),
-};
-
 /** All specs, keyed by id — the module builds a source per ENABLED id. */
 export const SITE_SPECS: Record<string, SiteSpec> = {
   olx,
@@ -356,6 +306,4 @@ export const SITE_SPECS: Record<string, SiteSpec> = {
   domria,
   lun,
   flatfy,
-  birdrent,
-  josti,
 };

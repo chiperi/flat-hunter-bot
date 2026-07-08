@@ -48,11 +48,7 @@ describe('OLX spec', () => {
 });
 
 describe('HTML specs build urls and parse __NEXT_DATA__', () => {
-  it.each([
-    ['flatfy', 'flatfy.ua'],
-    ['birdrent', 'birdrent.com'],
-    ['josti', 'josti.com.ua'],
-  ])('%s → %s', (key, domain) => {
+  it.each([['flatfy', 'flatfy.ua']])('%s → %s', (key, domain) => {
     const spec = SITE_SPECS[key];
     const url = spec.buildUrl!(criteria, cfg);
     expect(url).toContain(domain);
