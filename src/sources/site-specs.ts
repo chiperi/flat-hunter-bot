@@ -123,7 +123,7 @@ function domriaGeo(city: string): { state: number; city: number } | null {
   return DOMRIA_CITY_GEO[city.trim().toLowerCase()] ?? null;
 }
 
-function domriaTitle(info: any, id: number): string {
+function domriaTitle(info: any, id: number | string): string {
   const area = toFloat(info?.total_square_meters);
   return [
     info?.rooms_count ? `${info.rooms_count}-кімн.` : `Квартира ${id}`,
@@ -133,6 +133,47 @@ function domriaTitle(info: any, id: number): string {
     .filter(Boolean)
     .join(', ');
 }
+
+/** RIA photo CDN: base "photos" + a size suffix before .jpg (verified live). */
+function domriaPhoto(mainPhoto?: string): string | undefined {
+  if (!mainPhoto) return undefined;
+  return `https://cdn.riastatic.com/photos/${String(mainPhoto).replace(/(\.jpg)$/i, 'b$1')}`;
+}
+
+function mapDomriaInfo(info: any, id: number | string): RawListing {
+  const area = toFloat(info?.total_square_meters);
+  return {
+    id: String(id),
+    title: domriaTitle(info, id),
+    price: toInt(info?.price ?? info?.priceArr?.['3']),
+    currency: 'грн',
+    area: area === null ? null : Math.round(area),
+    rooms: toInt(info?.rooms_count),
+    city: info?.city_name ?? undefined,
+    // RIA's district is a neighbourhood, not the admin raion the user picks —
+    // leave it unset so DOM.RIA filters by city + price + area + rooms only.
+    district: undefined,
+    url: info?.beautiful_url
+      ? absoluteUrl(String(info.beautiful_url), 'https://dom.ria.com/uk')
+      : `https://dom.ria.com/uk/realty-${id}.html`,
+    imageUrl: domriaPhoto(info?.main_photo),
+    isBusiness: Boolean(info?.advert_type_id === 2 || info?.is_owner === 0),
+  };
+}
+
+/**
+ * Opt-2: per-(city+operation) cache so each cycle fetches details ONLY for
+ * genuinely-new listings, not the same top-N every time. The limited API budget
+ * is then spent on real newcomers → every new listing gets checked against all
+ * users' filters. In-memory (per process); resets on restart, then re-fills.
+ */
+const DOMRIA_SEARCH_WINDOW = 100; // newest ids we monitor
+const DOMRIA_CACHE_SIZE = 60; // recent listings we keep + return
+interface DomriaCache {
+  known: Set<string>; // ids we've already fetched details for
+  recent: RawListing[]; // recent listings (newest first)
+}
+export const domriaCaches = new Map<string, DomriaCache>();
 
 const domria: SiteSpec = {
   id: 'domria',
@@ -148,54 +189,49 @@ const domria: SiteSpec = {
     const geo = domriaGeo(c.city);
     if (!geo) return []; // unmapped city → skip rather than flood with all-Ukraine
 
-    // category 1 = flats, operation 3 = long-term rent. Results come
-    // newest-first (id descending), so the first N are the freshest. Price/area
-    // are filtered client-side (matchesCriteria) — accurate and language-proof.
+    const op = c.operation === 'sale' ? '1' : '3'; // RIA operation types
+    const cacheKey = `${geo.state}:${geo.city}:${op}`;
+    let cache = domriaCaches.get(cacheKey);
+    if (!cache) {
+      cache = { known: new Set(), recent: [] };
+      domriaCaches.set(cacheKey, cache);
+    }
+
+    // 1 search request → newest-first ids.
     const search = new URLSearchParams({
       api_key: apiKey,
       category: '1',
-      // 3 = long-term rent, 1 = sale (RIA operation types).
-      operation_type: c.operation === 'sale' ? '1' : '3',
+      operation_type: op,
       state_id: String(geo.state),
       city_id: String(geo.city),
       lang_id: '4',
     });
     const found: any = await ctx.getJson(`${baseUrl}/dom/search?${search.toString()}`);
-    const ids: number[] = Array.isArray(found?.items)
-      ? found.items.slice(0, ctx.cfg.domria.maxDetails)
-      : [];
+    const window: string[] = (Array.isArray(found?.items) ? found.items : [])
+      .slice(0, DOMRIA_SEARCH_WINDOW)
+      .map(String);
 
-    const listings: RawListing[] = [];
-    for (const id of ids) {
+    // Fetch details ONLY for ids we haven't seen — capped per cycle by the budget.
+    const newIds = window.filter((id) => !cache!.known.has(id)).slice(0, ctx.cfg.domria.maxDetails);
+    for (const id of newIds) {
       try {
         const info: any = await ctx.getJson(`${baseUrl}/dom/info/${id}?api_key=${apiKey}&lang_id=4`);
-        const area = toFloat(info?.total_square_meters);
-        listings.push({
-          id: String(id),
-          title: domriaTitle(info, id),
-          price: toInt(info?.price ?? info?.priceArr?.['3']),
-          currency: 'грн',
-          area: area === null ? null : Math.round(area),
-          rooms: toInt(info?.rooms_count),
-          city: info?.city_name ?? undefined,
-          // RIA's district is a micro-district (neighbourhood), not the admin
-          // raion the user picks — leave it unset so the raion filter is skipped
-          // for DOM.RIA (it filters by city + price + area). Raion-level filtering
-          // is a follow-up.
-          district: undefined,
-          url: info?.beautiful_url
-            ? absoluteUrl(String(info.beautiful_url), 'https://dom.ria.com/uk')
-            : `https://dom.ria.com/uk/realty-${id}.html`,
-          imageUrl: info?.main_photo
-            ? `https://cdn.riastatic.com/photosnew/${info.main_photo}`
-            : undefined,
-          isBusiness: Boolean(info?.advert_type_id === 2 || info?.is_owner === 0),
-        });
+        cache.recent.unshift(mapDomriaInfo(info, id));
       } catch {
-        // skip a single bad id
+        // ignore this id's details
       }
+      cache.known.add(id); // mark known either way so a bad id isn't retried forever
     }
-    return listings;
+
+    // Bound memory: cap recent, and prune `known` to the current search window
+    // (older ids won't reappear since ids are monotonic).
+    if (cache.recent.length > DOMRIA_CACHE_SIZE) {
+      cache.recent = cache.recent.slice(0, DOMRIA_CACHE_SIZE);
+    }
+    const windowSet = new Set(window);
+    cache.known = new Set([...cache.known].filter((id) => windowSet.has(id)));
+
+    return [...cache.recent];
   },
 };
 

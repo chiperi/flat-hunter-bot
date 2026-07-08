@@ -1,4 +1,4 @@
-import { SITE_SPECS } from './site-specs';
+import { SITE_SPECS, domriaCaches } from './site-specs';
 import { SearchCriteria } from './listing.interface';
 
 const cfg: any = {
@@ -67,6 +67,8 @@ describe('HTML specs build urls and parse __NEXT_DATA__', () => {
 });
 
 describe('DOM.RIA spec', () => {
+  beforeEach(() => domriaCaches.clear()); // reset the module-level opt-2 cache
+
   it('returns [] without an api key', async () => {
     const ctx = { cfg, getHtml: jest.fn(), getJson: jest.fn() };
     await expect(SITE_SPECS.domria.fetch!(ctx as any, criteria)).resolves.toEqual([]);
@@ -115,7 +117,37 @@ describe('DOM.RIA spec', () => {
       district: undefined,
       isBusiness: false,
       url: 'https://dom.ria.com/uk/realty-1',
-      imageUrl: 'https://cdn.riastatic.com/photosnew/a/b/p1.jpg',
+      imageUrl: 'https://cdn.riastatic.com/photos/a/b/p1b.jpg',
     });
+  });
+
+  it('fetches details only for NEW ids on a second cycle (opt-2 cache)', async () => {
+    const dcfg = { ...cfg, domria: { ...cfg.domria, apiKey: 'k' } };
+    const info = (id: number) => ({
+      rooms_count: 2,
+      total_square_meters: '50',
+      price: 9000,
+      city_name: 'Київ',
+      beautiful_url: `realty-${id}`,
+      main_photo: `p${id}.jpg`,
+      is_owner: 1,
+    });
+    // Cycle 1: ids [1,2] fetched (maxDetails=2). Cycle 2: newest is [3,2,1] → only 3 is new.
+    const getJson = jest
+      .fn()
+      .mockResolvedValueOnce({ items: [2, 1] }) // search #1
+      .mockResolvedValueOnce(info(2))
+      .mockResolvedValueOnce(info(1))
+      .mockResolvedValueOnce({ items: [3, 2, 1] }) // search #2 — a newcomer appears
+      .mockResolvedValueOnce(info(3));
+    const ctx = { cfg: dcfg, getHtml: jest.fn(), getJson };
+
+    const first = await SITE_SPECS.domria.fetch!(ctx as any, criteria);
+    expect(first.map((l) => l.id)).toEqual(['1', '2']); // newest-first (unshift order)
+
+    const second = await SITE_SPECS.domria.fetch!(ctx as any, criteria);
+    // only id 3 was fetched the second time (1 search + 1 detail)
+    expect(getJson).toHaveBeenCalledTimes(5);
+    expect(second.map((l) => l.id)).toEqual(['3', '1', '2']); // 3 prepended, rest cached
   });
 });
