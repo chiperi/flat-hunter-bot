@@ -1,11 +1,11 @@
 # Flat Hunter Bot 🏠🔎
 
-A Telegram bot that monitors **Ukrainian housing sites** against user-defined,
-**per-site** filters and sends **instant notifications** when a new matching
-listing appears — or when the price of one you've already seen changes. Each
-alert says which site it came from. **DOM.RIA** and **Rieltor** are live today
-(real data); the engine also supports OLX, LUN, Flatfy, BirdRent and Josti, to be
-wired up next.
+A Telegram bot that monitors **Ukrainian housing sites** against a user-defined
+filter and sends **instant notifications** when a new matching listing appears —
+or when the price of one you've already seen changes. You set the criteria once
+and it searches **every enabled site**; each alert says which site it came from.
+**DOM.RIA** and **Rieltor** are live today (real data); the engine also supports
+OLX, LUN, Flatfy, BirdRent and Josti, to be wired up next.
 
 Built with **NestJS + TypeScript**, **Telegraf** (long polling, no webhook) and
 **Redis** for all state. Runs as an isolated Docker Compose stack with **no
@@ -92,11 +92,11 @@ scheduler never knows or cares which sites are active. Adding a site = add a
 compact `SiteSpec` in `src/sources/site-specs.ts` and its id to
 `KNOWN_SOURCE_IDS`; no other wiring changes.
 
-Which sites are active is set by **`SOURCES`** (comma-separated). Filters are
-**per site** — each profile targets one source, and `/newsearch` starts by asking
-which site, then runs that site's question flow. The wizard drives **DOM.RIA** and
-**Rieltor** today; the other sources exist in the engine but aren't wired to the
-wizard yet.
+Which sites are active is set by **`SOURCES`** (comma-separated). A user has **one
+filter** that queries **every enabled site** — `/newsearch` asks the criteria
+once (operation → city → rooms → price → area), and each cycle checks all sources
+(DOM.RIA + Rieltor today), tagging each alert with its origin. Results are
+namespaced by `source:id`, so the same listing on two sites can't collide.
 
 | id | Site | data |
 |---|---|---|
@@ -256,7 +256,7 @@ workflow:
 
 | Variable | Default | Set it to… |
 |---|---|---|
-| `SOURCES` | `domria` | which sites are active (comma-separated) |
+| `SOURCES` | `domria,rieltor` | which sites are active (comma-separated) |
 | `POLL_INTERVAL_MS` | `600000` | raise/lower the poll interval (ms) |
 
 DOM.RIA needs the `FLAT_HUNTER_DOMRIA_API_KEY` secret to return data.

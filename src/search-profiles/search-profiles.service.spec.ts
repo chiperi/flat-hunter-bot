@@ -20,63 +20,74 @@ const build = () => {
 };
 
 describe('SearchProfilesService', () => {
-  it('upsertForSource() mints an 8-hex id and saves a source-scoped profile', async () => {
+  it('upsertForUser() mints an 8-hex id and saves the profile', async () => {
     const { service, profiles } = build();
     profiles.listByUser.mockResolvedValue([]);
-    const p = await service.upsertForSource(5, 9, 'domria', { city: 'Київ', ownerOnly: true });
+    const p = await service.upsertForUser(5, 9, { city: 'Київ', ownerOnly: true });
     expect(p.id).toMatch(/^[0-9a-f]{8}$/);
-    expect(p).toMatchObject({ userId: 5, chatId: 9, source: 'domria', name: 'Київ', primed: false });
+    expect(p).toMatchObject({ userId: 5, chatId: 9, name: 'Київ', primed: false });
     expect(profiles.save).toHaveBeenCalledWith(p);
   });
 
-  it('upsertForSource() honours an explicit name', async () => {
+  it('upsertForUser() honours an explicit name', async () => {
     const { service, profiles } = build();
     profiles.listByUser.mockResolvedValue([]);
-    const p = await service.upsertForSource(1, 1, 'olx', { city: 'Київ', ownerOnly: false }, 'Гараж');
+    const p = await service.upsertForUser(1, 1, { city: 'Київ', ownerOnly: false }, 'Гараж');
     expect(p.name).toBe('Гараж');
   });
 
-  it('never adds a second filter for the same site (one-per-site block)', async () => {
+  it('never adds a second filter for a user (one-per-user)', async () => {
     const { service, profiles } = build();
-    const existing = { id: 'keep', userId: 1, source: 'domria', criteria: {}, primed: true, name: 'x' };
+    const existing = { id: 'keep', userId: 1, criteria: {}, primed: true, name: 'x' };
     profiles.listByUser.mockResolvedValue([existing]);
-    const p = await service.upsertForSource(1, 1, 'domria', { city: 'Львів', ownerOnly: false });
+    const p = await service.upsertForUser(1, 1, { city: 'Львів', ownerOnly: false });
     expect(p.id).toBe('keep'); // reused the existing profile, not a new one
   });
 
-  it('findByUserAndSource() returns the matching site filter', async () => {
+  it('findByUser() returns the user\'s filter (or null)', async () => {
     const { service, profiles } = build();
-    profiles.listByUser.mockResolvedValue([
-      { id: 'a', source: 'olx' },
-      { id: 'b', source: 'domria' },
-    ]);
-    expect((await service.findByUserAndSource(1, 'domria'))?.id).toBe('b');
-    expect(await service.findByUserAndSource(1, 'lun')).toBeNull();
+    profiles.listByUser.mockResolvedValueOnce([{ id: 'a' }, { id: 'b' }]);
+    expect((await service.findByUser(1))?.id).toBe('a');
+    profiles.listByUser.mockResolvedValueOnce([]);
+    expect(await service.findByUser(1)).toBeNull();
   });
 
-  it('upsertForSource() creates when no filter exists for the site', async () => {
+  it('upsertForUser() creates when no filter exists', async () => {
     const { service, profiles } = build();
     profiles.listByUser.mockResolvedValue([]);
-    const p = await service.upsertForSource(1, 1, 'domria', { city: 'Київ', ownerOnly: false });
-    expect(p.source).toBe('domria');
+    const p = await service.upsertForUser(1, 1, { city: 'Київ', ownerOnly: false });
+    expect(p.userId).toBe(1);
     expect(profiles.save).toHaveBeenCalled();
   });
 
-  it('upsertForSource() overwrites the existing filter and re-primes', async () => {
+  it('upsertForUser() overwrites the existing filter and re-primes', async () => {
     const { service, profiles } = build();
     const existing = {
       id: 'x',
       userId: 1,
-      source: 'domria',
       criteria: { city: 'Old', ownerOnly: false },
       primed: true,
       name: 'old',
     };
     profiles.listByUser.mockResolvedValue([existing]);
-    const p = await service.upsertForSource(1, 1, 'domria', { city: 'Київ', ownerOnly: false });
+    const p = await service.upsertForUser(1, 1, { city: 'Київ', ownerOnly: false });
     expect(p.id).toBe('x');
     expect(p.criteria.city).toBe('Київ');
     expect(p.primed).toBe(false);
+  });
+
+  it('upsertForUser() collapses legacy per-site duplicates into one', async () => {
+    const { service, profiles, seen } = build();
+    profiles.listByUser.mockResolvedValue([
+      { id: 'keep', userId: 1, criteria: {}, primed: true, name: 'a' },
+      { id: 'dup1', userId: 1, criteria: {}, primed: true, name: 'b' },
+      { id: 'dup2', userId: 1, criteria: {}, primed: true, name: 'c' },
+    ]);
+    const p = await service.upsertForUser(1, 1, { city: 'Київ', ownerOnly: false });
+    expect(p.id).toBe('keep');
+    expect(profiles.delete).toHaveBeenCalledTimes(2); // dup1 + dup2
+    expect(seen.clear).toHaveBeenCalledWith('dup1');
+    expect(seen.clear).toHaveBeenCalledWith('dup2');
   });
 
   it('setPaused() returns null for a missing or foreign profile', async () => {
