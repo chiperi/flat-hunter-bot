@@ -21,6 +21,7 @@ const OP_SALE = '🏢 Продаж';
 const CITY_KYIV = '🏙 Київ';
 const ROOMS_ANY = 'Будь-яка';
 const OTHER = '✏️ Інше';
+const CANCEL = '❌ Відмінити';
 
 type Stage =
   | 'site'
@@ -65,8 +66,8 @@ export class NewSearchWizard {
     st.stage = 'site';
     await ctx.reply(
       '🆕 Новий фільтр. Спершу оберіть <b>сайт</b> (на кожен сайт — один фільтр).\n' +
-        'У будь-який момент — /cancel.\n\n1️⃣ <b>Сайт</b>?',
-      { ...HTML, ...Markup.keyboard([[SITE_DOMRIA, SITE_RIELTOR]]).oneTime().resize() },
+        'Скасувати — кнопкою «❌ Відмінити» (на будь-якому кроці).\n\n1️⃣ <b>Сайт</b>?',
+      { ...HTML, ...Markup.keyboard([[SITE_DOMRIA, SITE_RIELTOR], [CANCEL]]).oneTime().resize() },
     );
   }
 
@@ -79,7 +80,10 @@ export class NewSearchWizard {
   @On('text')
   async onText(@Ctx() ctx: Scenes.SceneContext) {
     const text = this.text(ctx);
-    if (text.toLowerCase() === '/cancel') return this.onCancel(ctx);
+    // Cancel works at any step — via the button or the /cancel command. Nothing
+    // is persisted until save(), so leaving here discards the whole draft.
+    const low = text.toLowerCase();
+    if (low === '/cancel' || low.includes('відмін')) return this.onCancel(ctx);
     const st = this.state(ctx);
     switch (st.stage) {
       case 'site':
@@ -123,7 +127,7 @@ export class NewSearchWizard {
     st.stage = 'operation';
     await ctx.reply(intro + '2️⃣ Тип <b>операції</b>?', {
       ...HTML,
-      ...Markup.keyboard([[OP_RENT], [OP_SALE]]).oneTime().resize(),
+      ...Markup.keyboard([[OP_RENT], [OP_SALE], [CANCEL]]).oneTime().resize(),
     });
   }
 
@@ -138,7 +142,7 @@ export class NewSearchWizard {
     st.stage = 'city';
     await ctx.reply('3️⃣ <b>Місто</b>? (поки доступний лише Київ)', {
       ...HTML,
-      ...Markup.keyboard([[CITY_KYIV]]).oneTime().resize(),
+      ...Markup.keyboard([[CITY_KYIV], [CANCEL]]).oneTime().resize(),
     });
   }
 
@@ -151,7 +155,7 @@ export class NewSearchWizard {
     st.stage = 'rooms';
     await ctx.reply('4️⃣ Скільки <b>кімнат</b>?', {
       ...HTML,
-      ...Markup.keyboard([['1', '2', '3', '4+'], [ROOMS_ANY]]).oneTime().resize(),
+      ...Markup.keyboard([['1', '2', '3', '4+'], [ROOMS_ANY], [CANCEL]]).oneTime().resize(),
     });
   }
 
@@ -173,7 +177,7 @@ export class NewSearchWizard {
       await ctx.reply(
         'Введіть <b>ціну</b> (грн): напр. <code>від 5000 до 15000</code>, <code>до 20000</code> ' +
           'або <code>-</code> щоб не обмежувати.',
-        { ...HTML, ...Markup.removeKeyboard() },
+        { ...HTML, ...Markup.keyboard([[CANCEL]]).oneTime().resize() },
       );
       return;
     }
@@ -192,7 +196,7 @@ export class NewSearchWizard {
       await ctx.reply(
         'Введіть <b>площу</b> (м²): напр. <code>від 30 до 60</code>, <code>до 80</code> ' +
           'або <code>-</code> щоб не обмежувати.',
-        { ...HTML, ...Markup.removeKeyboard() },
+        { ...HTML, ...Markup.keyboard([[CANCEL]]).oneTime().resize() },
       );
       return;
     }
@@ -242,7 +246,7 @@ export class NewSearchWizard {
     st.stage = 'price';
     await ctx.reply('5️⃣ Оберіть <b>ціну</b> (грн) або «Інше» для ручного вводу:', {
       ...HTML,
-      ...Markup.keyboard([['до 10000', 'до 20000', 'до 30000'], [OTHER]]).oneTime().resize(),
+      ...Markup.keyboard([['до 10000', 'до 20000', 'до 30000'], [OTHER], [CANCEL]]).oneTime().resize(),
     });
   }
 
@@ -250,7 +254,7 @@ export class NewSearchWizard {
     st.stage = 'area';
     await ctx.reply('6️⃣ Оберіть <b>площу</b> (м²) або «Інше» для ручного вводу:', {
       ...HTML,
-      ...Markup.keyboard([['30–60', 'до 45', 'до 80'], [OTHER]]).oneTime().resize(),
+      ...Markup.keyboard([['30–60', 'до 45', 'до 80'], [OTHER], [CANCEL]]).oneTime().resize(),
     });
   }
 
