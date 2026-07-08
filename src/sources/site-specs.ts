@@ -8,10 +8,12 @@ import {
   extractNextData,
   mapOffer,
   parseCards,
+  parseLun,
   parseRieltor,
   toFloat,
   toInt,
 } from './parsing.util';
+import { uahRates } from './currency';
 
 /**
  * One spec per tracked site.
@@ -250,29 +252,26 @@ const domria: SiteSpec = {
   },
 };
 
-// --- lun.ua (SPA on LUN's backend) -----------------------------------------
+// --- lun.ua ----------------------------------------------------------------
+// Server-rendered, reachable from the droplet (same LUN/Cloudflare infra as
+// rieltor). Data comes from a ld+json ItemList + per-card page_id (see
+// parseLun). Kyiv-only for now (path segment). Prices arrive in the seller's
+// currency ($/€/грн) with no pre-converted UAH, so we pass NBU rates in.
+function lunUrl(c: SearchCriteria): string {
+  const op = c.operation === 'sale' ? 'sale' : 'rent';
+  return `https://lun.ua/${op}/kyiv/flats`;
+}
+
 const lun: SiteSpec = {
   id: 'lun',
   label: 'ЛУН',
-  kind: 'html',
-  buildUrl: (c) => {
-    const p = priceAreaQuery(c, {
-      q: 'geo',
-      priceMin: 'price_from',
-      priceMax: 'price_to',
-      areaMin: 'area_total_from',
-      areaMax: 'area_total_to',
-    });
-    return `https://lun.ua/uk/оренда-квартир?${p.toString()}`;
+  requestKey: (c) => `${(c.city ?? '').trim().toLowerCase()}|${c.operation ?? 'rent'}`,
+  fetch: async (ctx, c) => {
+    if (!/київ|kyiv|киев/i.test(c.city ?? '')) return []; // Kyiv-only for now
+    const html = await ctx.getHtml(lunUrl(c));
+    const rates = await uahRates((url) => ctx.getJson(url));
+    return parseLun(html, rates);
   },
-  parse: (html) =>
-    nextDataThenCards(html, 'https://lun.ua', {
-      card: '[class*="card"], article',
-      title: 'h3, h2, [class*="title"]',
-      price: '[class*="price"]',
-      link: 'a[href]',
-      image: 'img',
-    }),
 };
 
 // --- flatfy.ua (same LUN backend; overlaps lun + aggregates OLX/DOM.RIA) ----

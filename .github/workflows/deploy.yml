@@ -105,8 +105,8 @@ jobs:
           export DOMRIA_API_KEY='${{ secrets.FLAT_HUNTER_DOMRIA_API_KEY }}'
 
           # Runtime config via repo Variables (Settings -> Secrets and variables
-          # -> Actions -> Variables). Defaults: DOM.RIA + Rieltor, 10-min poll.
-          export SOURCES='${{ vars.SOURCES || 'domria,rieltor' }}'
+          # -> Actions -> Variables). Defaults: DOM.RIA + Rieltor + ЛУН, 10-min poll.
+          export SOURCES='${{ vars.SOURCES || 'domria,rieltor,lun' }}'
           export POLL_INTERVAL_MS='${{ vars.POLL_INTERVAL_MS || '600000' }}'
           export DOMRIA_MAX_DETAILS='${{ vars.DOMRIA_MAX_DETAILS || '10' }}'
 

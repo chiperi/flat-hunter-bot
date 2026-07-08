@@ -4,8 +4,8 @@ A Telegram bot that monitors **Ukrainian housing sites** against a user-defined
 filter and sends **instant notifications** when a new matching listing appears —
 or when the price of one you've already seen changes. You set the criteria once
 and it searches **every enabled site**; each alert says which site it came from.
-**DOM.RIA** and **Rieltor** are live today (real data); the engine also supports
-OLX, LUN, Flatfy, BirdRent and Josti, to be wired up next.
+**DOM.RIA**, **Rieltor** and **ЛУН** are live today (real data); the engine also
+supports OLX, Flatfy, BirdRent and Josti, to be wired up next.
 
 Built with **NestJS + TypeScript**, **Telegraf** (long polling, no webhook) and
 **Redis** for all state. Runs as an isolated Docker Compose stack with **no
@@ -103,7 +103,7 @@ namespaced by `source:id`, so the same listing on two sites can't collide.
 | `domria` | dom.ria.com | **official API** (needs `DOMRIA_API_KEY`) — real, tuned |
 | `rieltor` | rieltor.ua | HTML (server-rendered cards) — real, verified live |
 | `olx` | OLX.ua | HTML (`__NEXT_DATA__` → cards) — blocked from datacenter IPs (403) |
-| `lun` | lun.ua | HTML/SPA — best-effort, not yet wired |
+| `lun` | lun.ua | HTML (ld+json + `page_id`) — real; $/€ converted via NBU; no m² in list |
 | `flatfy` | flatfy.ua | HTML/SPA — best-effort, not yet wired |
 | `birdrent` | birdrent.com | HTML — best-effort, not yet wired |
 | `josti` | josti.com.ua | HTML — best-effort, not yet wired |
@@ -256,7 +256,7 @@ workflow:
 
 | Variable | Default | Set it to… |
 |---|---|---|
-| `SOURCES` | `domria,rieltor` | which sites are active (comma-separated) |
+| `SOURCES` | `domria,rieltor,lun` | which sites are active (comma-separated) |
 | `POLL_INTERVAL_MS` | `600000` | raise/lower the poll interval (ms) |
 
 DOM.RIA needs the `FLAT_HUNTER_DOMRIA_API_KEY` secret to return data.
@@ -299,7 +299,7 @@ See [`.env.example`](.env.example) for the annotated list. Highlights:
 | `REDIS_KEY_PREFIX` | `olx` | namespaces every key |
 | `POLL_INTERVAL_MS` | `300000` | base poll interval (5 min) |
 | `POLL_JITTER_MS` | `60000` | ± random jitter per cycle |
-| `SOURCES` | `domria` | comma list of active sites (`olx,rieltor,domria,lun,flatfy,birdrent,josti`) |
+| `SOURCES` | `domria,rieltor,lun` | comma list of active sites (`olx,rieltor,domria,lun,flatfy,birdrent,josti`) |
 | `DOMRIA_API_KEY` | — | DOM.RIA official API key; without it `domria` returns nothing |
 | `DOMRIA_MAX_DETAILS` | `10` | cap on per-search DOM.RIA detail calls (rate-limit guard) |
 | `OLX_BASE_URL` | `https://www.olx.ua` | OLX source only |

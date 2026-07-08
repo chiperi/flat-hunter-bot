@@ -49,7 +49,6 @@ describe('OLX spec', () => {
 
 describe('HTML specs build urls and parse __NEXT_DATA__', () => {
   it.each([
-    ['lun', 'lun.ua'],
     ['flatfy', 'flatfy.ua'],
     ['birdrent', 'birdrent.com'],
     ['josti', 'josti.com.ua'],
@@ -83,6 +82,47 @@ describe('Rieltor spec', () => {
     expect(url).toContain('/flats-sale/');
     expect(url).not.toContain('rooms=');
     expect(url).not.toContain('f-owners');
+  });
+});
+
+describe('ЛУН (lun) spec', () => {
+  it('builds the Kyiv rent/sale path and dedups by city+operation', () => {
+    expect(SITE_SPECS.lun.requestKey!({ city: 'Київ', operation: 'rent', ownerOnly: false }, cfg)).toBe(
+      'київ|rent',
+    );
+  });
+
+  it('fetches the page + NBU rates and parses listings', async () => {
+    const html =
+      '<script id="schema-real-estate" type="application/ld+json">' +
+      JSON.stringify({
+        itemListElement: [
+          {
+            item: {
+              name: 'Хрещатик, 1',
+              numberOfRooms: 2,
+              address: { addressLocality: 'Київ' },
+              offers: { price: 18000, priceCurrency: 'uah' },
+            },
+          },
+        ],
+      }) +
+      '</script>' +
+      '<div class="RealtyCard_root__x"><button data-event-options="page_id:111|is_owner:0">go</button></div>';
+    const getJson = jest.fn().mockResolvedValue([{ cc: 'USD', rate: 41 }]); // NBU
+    const ctx = { cfg, getHtml: jest.fn().mockResolvedValue(html), getJson };
+    const res = await SITE_SPECS.lun.fetch!(ctx as any, { city: 'Київ', operation: 'rent', ownerOnly: false });
+    expect(ctx.getHtml).toHaveBeenCalledWith('https://lun.ua/rent/kyiv/flats');
+    expect(res[0]).toMatchObject({ id: '111', price: 18000, currency: 'грн' });
+  });
+
+  it('skips a non-Kyiv city without fetching', async () => {
+    const getHtml = jest.fn();
+    const ctx = { cfg, getHtml, getJson: jest.fn() };
+    await expect(
+      SITE_SPECS.lun.fetch!(ctx as any, { city: 'Львів', ownerOnly: false }),
+    ).resolves.toEqual([]);
+    expect(getHtml).not.toHaveBeenCalled();
   });
 });
 
