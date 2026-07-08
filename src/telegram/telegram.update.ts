@@ -99,6 +99,13 @@ export class TelegramUpdate {
       await ctx.answerCbQuery('Пошук не знайдено');
       return;
     }
+    // A search must be paused before it can be deleted (also guards a stale
+    // delete button on an old message for a since-resumed search).
+    if (!profile.paused) {
+      await ctx.answerCbQuery('Спершу призупиніть пошук, потім видаляйте', { show_alert: true });
+      await this.rerenderProfile(ctx, profile);
+      return;
+    }
     await ctx.answerCbQuery();
     await ctx.editMessageReplyMarkup(
       Markup.inlineKeyboard([
@@ -115,6 +122,18 @@ export class TelegramUpdate {
     const id = this.matchId(ctx);
     const userId = ctx.from?.id;
     if (!id || !userId) return;
+    const profile = await this.profiles.get(id);
+    if (!profile || profile.userId !== userId) {
+      await ctx.answerCbQuery('Не знайдено');
+      await ctx.editMessageText('Пошук не знайдено.');
+      return;
+    }
+    // Re-check in case the search was resumed between the prompt and confirm.
+    if (!profile.paused) {
+      await ctx.answerCbQuery('Спершу призупиніть пошук', { show_alert: true });
+      await this.rerenderProfile(ctx, profile);
+      return;
+    }
     const ok = await this.profiles.delete(id, userId);
     await ctx.answerCbQuery(ok ? 'Видалено' : 'Не знайдено');
     await ctx.editMessageText(ok ? '🗑 Пошук видалено.' : 'Пошук не знайдено.');
@@ -149,12 +168,24 @@ export class TelegramUpdate {
 
   // --- helpers ------------------------------------------------------------
 
+  /**
+   * Context-aware actions:
+   *   - running  → the only allowed action is to pause it;
+   *   - paused   → the full context (resume + delete).
+   * So a search must be stopped before it can be deleted.
+   */
   private profileKeyboard(p: SearchProfile) {
-    const toggle = p.paused
-      ? Markup.button.callback('▶️ Відновити', `resume:${p.id}`)
-      : Markup.button.callback('⏸ Призупинити', `pause:${p.id}`);
-    const del = Markup.button.callback('🗑 Видалити', `del:${p.id}`);
-    return Markup.inlineKeyboard([[toggle, del]]);
+    if (!p.paused) {
+      return Markup.inlineKeyboard([
+        [Markup.button.callback('⏸ Призупинити', `pause:${p.id}`)],
+      ]);
+    }
+    return Markup.inlineKeyboard([
+      [
+        Markup.button.callback('▶️ Відновити', `resume:${p.id}`),
+        Markup.button.callback('🗑 Видалити', `del:${p.id}`),
+      ],
+    ]);
   }
 
   private matchId(ctx: Scenes.SceneContext): string | undefined {
