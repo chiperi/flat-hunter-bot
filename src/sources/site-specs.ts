@@ -15,13 +15,12 @@ import {
 /**
  * One spec per tracked site.
  *
- * ⚠️ Real HTTP parsing is BEST-EFFORT. None of these sites has a stable public
+ * ⚠️ The HTML parsers are BEST-EFFORT. None of these sites has a stable public
  * contract for this use case (except DOM.RIA's official API), their markup
  * drifts, and several are SPAs / may block datacenter IPs. Treat every
  * `buildUrl`/`parse` below as a starting point to tune against the live site.
- * All parsers are defensive (return [] on mismatch). `SCRAPER=mock` — the
- * default — sidesteps all of this and exercises the whole pipeline for every
- * source without network.
+ * All parsers are defensive (return [] on mismatch). DOM.RIA is the tuned,
+ * working source; the others are wired but not yet driven by the wizard.
  *
  * Note on overlap: lun.ua and flatfy.ua are the same company (LUN), and Flatfy
  * is itself an aggregator that already pulls OLX + DOM.RIA — enabling all of

@@ -10,7 +10,6 @@ beforeEach(() => {
 });
 
 const cfg = (over: Record<string, unknown> = {}): any => ({
-  mode: 'mock',
   enabled: [],
   timeoutMs: 1000,
   maxRetries: 0,
@@ -20,29 +19,9 @@ const cfg = (over: Record<string, unknown> = {}): any => ({
   ...over,
 });
 
-const criteria: SearchCriteria = { city: 'Київ', ownerOnly: true, priceMin: 5000, priceMax: 20000 };
+const criteria: SearchCriteria = { city: 'Київ', ownerOnly: false };
 
-describe('HttpListingSource — mock mode', () => {
-  const spec: SiteSpec = { id: 'm', label: 'MockSite' };
-
-  it('produces listings tagged with source/label that respect the criteria', async () => {
-    const source = new HttpListingSource(spec, cfg({ mode: 'mock' }));
-    const res = await source.fetchListings(criteria);
-    expect(res.length).toBeGreaterThan(0);
-    expect(res.every((l) => l.source === 'm' && l.sourceLabel === 'MockSite')).toBe(true);
-    expect(res.every((l) => !l.isBusiness)).toBe(true); // ownerOnly
-    expect(res.every((l) => l.price! >= 5000 && l.price! <= 20000)).toBe(true);
-  });
-
-  it('is deterministic for the same source + criteria', async () => {
-    const source = new HttpListingSource(spec, cfg({ mode: 'mock' }));
-    const a = await source.fetchListings(criteria);
-    const b = await source.fetchListings(criteria);
-    expect(a.map((l) => l.id)).toEqual(b.map((l) => l.id));
-  });
-});
-
-describe('HttpListingSource — http mode', () => {
+describe('HttpListingSource', () => {
   it('runs a declarative html spec and stamps the source', async () => {
     const spec: SiteSpec = {
       id: 't',
@@ -54,7 +33,7 @@ describe('HttpListingSource — http mode', () => {
       ],
     };
     httpGet.mockResolvedValue({ status: 200, data: '<html></html>' });
-    const source = new HttpListingSource(spec, cfg({ mode: 'http' }));
+    const source = new HttpListingSource(spec, cfg());
     const res = await source.fetchListings(criteria);
     expect(res).toHaveLength(1);
     expect(res[0]).toMatchObject({ id: '1', source: 't', sourceLabel: 'T' });
@@ -78,26 +57,24 @@ describe('HttpListingSource — http mode', () => {
       },
     };
     httpGet.mockResolvedValue({ status: 200, data: { items: [1, 2] } });
-    const source = new HttpListingSource(spec, cfg({ mode: 'http' }));
-    const res = await source.fetchListings({ city: 'Київ', ownerOnly: false });
+    const source = new HttpListingSource(spec, cfg());
+    const res = await source.fetchListings(criteria);
     expect(res.map((l) => l.id)).toEqual(['1', '2']);
   });
 
   it('returns [] on an HTTP error (never throws)', async () => {
     const spec: SiteSpec = { id: 't', label: 'T', kind: 'html', buildUrl: () => 'https://x', parse: () => [] };
     httpGet.mockResolvedValue({ status: 500, data: '' });
-    const source = new HttpListingSource(spec, cfg({ mode: 'http' }));
+    const source = new HttpListingSource(spec, cfg());
     await expect(source.fetchListings(criteria)).resolves.toEqual([]);
   });
 
   it('returns [] when buildUrl yields null', async () => {
     const spec: SiteSpec = { id: 't', label: 'T', kind: 'html', buildUrl: () => null, parse: () => [] };
-    const source = new HttpListingSource(spec, cfg({ mode: 'http' }));
+    const source = new HttpListingSource(spec, cfg());
     await expect(source.fetchListings(criteria)).resolves.toEqual([]);
   });
-});
 
-describe('HttpListingSource — proxy config', () => {
   it('passes a parsed proxy to axios', () => {
     new HttpListingSource({ id: 'p', label: 'P' }, cfg({ proxyUrl: 'http://user:pass@host:3128' }));
     const opts = (axios.create as jest.Mock).mock.calls.pop()![0];
