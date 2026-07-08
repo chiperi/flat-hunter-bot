@@ -4,8 +4,9 @@ A Telegram bot that monitors **Ukrainian housing sites** against a user-defined
 filter and sends **instant notifications** when a new matching listing appears —
 or when the price of one you've already seen changes. You set the criteria once
 and it searches **every enabled site**; each alert says which site it came from.
-**DOM.RIA**, **Rieltor** and **ЛУН** are live today (real data); the engine also
-supports OLX, Flatfy, BirdRent and Josti, to be wired up next.
+**DOM.RIA** and **Rieltor** are live today (real data). The engine also has working
+adapters for OLX, ЛУН, Flatfy, BirdRent and Josti — but OLX and ЛУН Cloudflare-block
+the droplet's datacenter IP (403), so they need a residential proxy to enable.
 
 Built with **NestJS + TypeScript**, **Telegraf** (long polling, no webhook) and
 **Redis** for all state. Runs as an isolated Docker Compose stack with **no
@@ -15,13 +16,10 @@ inbound ports** — it only makes outbound calls to Telegram and the housing sit
 
 ## Features
 
-- **Per-site filters** — each search targets one site with that site's own
-  fields/buttons; dedup is namespaced per site (`source:id`). DOM.RIA is live
-  today (real data via its official API); more sites plug in behind one interface.
-- **Multiple independent search profiles per user** — e.g. "apartment for me"
-  + "garage as investment" — each polling and notifying on its own.
-- **Filters:** city, district, price range, area range (m²), owner-only vs.
-  include realtors.
+- **One filter, all sites** — set the criteria once; every enabled site is
+  searched each cycle and each alert shows its source. Dedup is namespaced per
+  site (`source:id`), so the same flat on two sites can't collide.
+- **Filters:** operation (rent/sale), city, rooms, price range, area range (m²).
 - **New-listing + price-change alerts** with title, price, area, district, link,
   thumbnail, and the source site.
 - **Allowlist access control** — only permitted Telegram user IDs can use the bot.
@@ -39,7 +37,7 @@ inbound ports** — it only makes outbound calls to Telegram and the housing sit
 | Command | What it does |
 |---|---|
 | `/start`, `/help` | Welcome + how-to |
-| `/newsearch` | Step-by-step wizard: city → district → price → area → owner toggle |
+| `/newsearch` | Step-by-step wizard: operation → city → rooms → price → area |
 | `/mysearches` | List your profiles with inline **Pause / Resume / Delete** buttons |
 | `/pause <id>` | Pause a profile (keeps its data) |
 | `/resume <id>` | Resume a paused profile |
@@ -103,7 +101,7 @@ namespaced by `source:id`, so the same listing on two sites can't collide.
 | `domria` | dom.ria.com | **official API** (needs `DOMRIA_API_KEY`) — real, tuned |
 | `rieltor` | rieltor.ua | HTML (server-rendered cards) — real, verified live |
 | `olx` | OLX.ua | HTML (`__NEXT_DATA__` → cards) — blocked from datacenter IPs (403) |
-| `lun` | lun.ua | HTML (ld+json + `page_id`) — real; $/€ converted via NBU; no m² in list |
+| `lun` | lun.ua | HTML (ld+json + `page_id`) — real parser (+NBU $/€→грн), but **403 from datacenter IP → needs a proxy** |
 | `flatfy` | flatfy.ua | HTML/SPA — best-effort, not yet wired |
 | `birdrent` | birdrent.com | HTML — best-effort, not yet wired |
 | `josti` | josti.com.ua | HTML — best-effort, not yet wired |
@@ -256,7 +254,7 @@ workflow:
 
 | Variable | Default | Set it to… |
 |---|---|---|
-| `SOURCES` | `domria,rieltor,lun` | which sites are active (comma-separated) |
+| `SOURCES` | `domria,rieltor` | which sites are active (comma-separated) |
 | `POLL_INTERVAL_MS` | `600000` | raise/lower the poll interval (ms) |
 
 DOM.RIA needs the `FLAT_HUNTER_DOMRIA_API_KEY` secret to return data.
@@ -299,7 +297,7 @@ See [`.env.example`](.env.example) for the annotated list. Highlights:
 | `REDIS_KEY_PREFIX` | `olx` | namespaces every key |
 | `POLL_INTERVAL_MS` | `300000` | base poll interval (5 min) |
 | `POLL_JITTER_MS` | `60000` | ± random jitter per cycle |
-| `SOURCES` | `domria,rieltor,lun` | comma list of active sites (`olx,rieltor,domria,lun,flatfy,birdrent,josti`) |
+| `SOURCES` | `domria,rieltor` | comma list of active sites (`olx,rieltor,domria,lun,flatfy,birdrent,josti`) |
 | `DOMRIA_API_KEY` | — | DOM.RIA official API key; without it `domria` returns nothing |
 | `DOMRIA_MAX_DETAILS` | `10` | cap on per-search DOM.RIA detail calls (rate-limit guard) |
 | `OLX_BASE_URL` | `https://www.olx.ua` | OLX source only |

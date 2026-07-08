@@ -24,7 +24,9 @@ services:
       - REDIS_URL=redis://redis:6379
       # Non-secret operational config (overridable via the deploy shell env).
       - REDIS_KEY_PREFIX=${REDIS_KEY_PREFIX:-olx}
-      - SOURCES=${SOURCES:-domria,rieltor,lun}
+      # lun/olx are code-ready but Cloudflare-block the droplet's datacenter IP
+      # (403) — add them here only once HTTP_PROXY_URL points at a residential proxy.
+      - SOURCES=${SOURCES:-domria,rieltor}
       - POLL_INTERVAL_MS=${POLL_INTERVAL_MS:-300000}
       - POLL_JITTER_MS=${POLL_JITTER_MS:-60000}
       - DOMRIA_MAX_DETAILS=${DOMRIA_MAX_DETAILS:-10}
