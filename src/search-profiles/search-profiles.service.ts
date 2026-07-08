@@ -24,7 +24,11 @@ export class SearchProfilesService {
     return randomBytes(4).toString('hex');
   }
 
-  async create(
+  /**
+   * Internal — mints a brand-new profile. NOT public: the only way to add a
+   * filter is `upsertForSource`, which enforces the one-filter-per-site rule.
+   */
+  private async create(
     userId: number,
     chatId: number,
     source: string,

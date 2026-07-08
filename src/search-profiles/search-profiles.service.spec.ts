@@ -20,18 +20,28 @@ const build = () => {
 };
 
 describe('SearchProfilesService', () => {
-  it('create() mints an 8-hex id and saves a source-scoped profile', async () => {
+  it('upsertForSource() mints an 8-hex id and saves a source-scoped profile', async () => {
     const { service, profiles } = build();
-    const p = await service.create(5, 9, 'domria', { city: 'Київ', ownerOnly: true });
+    profiles.listByUser.mockResolvedValue([]);
+    const p = await service.upsertForSource(5, 9, 'domria', { city: 'Київ', ownerOnly: true });
     expect(p.id).toMatch(/^[0-9a-f]{8}$/);
     expect(p).toMatchObject({ userId: 5, chatId: 9, source: 'domria', name: 'Київ', primed: false });
     expect(profiles.save).toHaveBeenCalledWith(p);
   });
 
-  it('create() honours an explicit name', async () => {
-    const { service } = build();
-    const p = await service.create(1, 1, 'olx', { city: 'Київ', ownerOnly: false }, 'Гараж');
+  it('upsertForSource() honours an explicit name', async () => {
+    const { service, profiles } = build();
+    profiles.listByUser.mockResolvedValue([]);
+    const p = await service.upsertForSource(1, 1, 'olx', { city: 'Київ', ownerOnly: false }, 'Гараж');
     expect(p.name).toBe('Гараж');
+  });
+
+  it('never adds a second filter for the same site (one-per-site block)', async () => {
+    const { service, profiles } = build();
+    const existing = { id: 'keep', userId: 1, source: 'domria', criteria: {}, primed: true, name: 'x' };
+    profiles.listByUser.mockResolvedValue([existing]);
+    const p = await service.upsertForSource(1, 1, 'domria', { city: 'Львів', ownerOnly: false });
+    expect(p.id).toBe('keep'); // reused the existing profile, not a new one
   });
 
   it('findByUserAndSource() returns the matching site filter', async () => {
