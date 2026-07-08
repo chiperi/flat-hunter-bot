@@ -38,7 +38,7 @@ describe('NewSearchWizard (DOM.RIA flow)', () => {
     await wizard.onEnter(ctx as any);
     expect(ctx.scene.state.stage).toBe('operation');
 
-    await feed(wizard, ctx, '🔑 Оренда');
+    await feed(wizard, ctx, '🔑 Довгострокова оренда');
     expect(ctx.scene.state).toMatchObject({ operation: 'rent', stage: 'city' });
 
     await feed(wizard, ctx, '🏙 Київ');

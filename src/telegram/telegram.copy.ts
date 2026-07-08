@@ -47,7 +47,7 @@ export function describeProfile(p: SearchProfile): string {
   const c = p.criteria;
   const where = c.district ? `${esc(c.city)}, ${esc(c.district)}` : esc(c.city);
   const site = SOURCE_LABELS[p.source] ?? esc(p.source);
-  const op = c.operation === 'sale' ? 'продаж' : 'оренда';
+  const op = c.operation === 'sale' ? 'продаж' : 'довгострокова оренда';
   const price = fmtRange(c.priceMin, c.priceMax, 'грн');
   const area = fmtRange(c.areaMin, c.areaMax, 'м²');
   const status = p.paused ? '⏸ призупинено' : '▶️ активний';

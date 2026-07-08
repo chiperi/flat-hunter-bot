@@ -14,7 +14,7 @@ export const NEWSEARCH_SCENE = 'newsearch';
 const SOURCE = 'domria';
 
 // --- button labels ---------------------------------------------------------
-const OP_RENT = '🔑 Оренда';
+const OP_RENT = '🔑 Довгострокова оренда';
 const OP_SALE = '🏢 Продаж';
 const CITY_KYIV = '🏙 Київ';
 const ROOMS_ANY = 'Будь-яка';
