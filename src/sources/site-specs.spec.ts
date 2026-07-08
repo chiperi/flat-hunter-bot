@@ -49,7 +49,6 @@ describe('OLX spec', () => {
 
 describe('HTML specs build urls and parse __NEXT_DATA__', () => {
   it.each([
-    ['rieltor', 'rieltor.ua'],
     ['lun', 'lun.ua'],
     ['flatfy', 'flatfy.ua'],
     ['birdrent', 'birdrent.com'],
@@ -63,6 +62,27 @@ describe('HTML specs build urls and parse __NEXT_DATA__', () => {
     const html = `<script id="__NEXT_DATA__">${JSON.stringify({ items: [offer] })}</script>`;
     const res = spec.parse!(html, cfg);
     expect(res[0]).toMatchObject({ id: '7', title: 'T' });
+  });
+});
+
+describe('Rieltor spec', () => {
+  it('builds a rent url with verified filter params', () => {
+    const url = SITE_SPECS.rieltor.buildUrl!(
+      { city: 'Київ', operation: 'rent', priceMin: 5000, priceMax: 15000, rooms: 2, ownerOnly: true },
+      cfg,
+    );
+    expect(url).toContain('https://rieltor.ua/flats-rent/');
+    expect(url).toContain('price_min=5000');
+    expect(url).toContain('price_max=15000');
+    expect(url).toContain('rooms=2');
+    expect(url).toContain('f-owners=1');
+  });
+
+  it('uses flats-sale for sale and omits rooms for 4+ (no URL form)', () => {
+    const url = SITE_SPECS.rieltor.buildUrl!({ city: 'Київ', operation: 'sale', rooms: 4, ownerOnly: false }, cfg);
+    expect(url).toContain('/flats-sale/');
+    expect(url).not.toContain('rooms=');
+    expect(url).not.toContain('f-owners');
   });
 });
 

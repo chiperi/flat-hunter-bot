@@ -161,3 +161,78 @@ export function idFromHref(href: string): string {
   const numeric = seg.match(/\d{4,}/)?.[0];
   return numeric ?? seg ?? clean;
 }
+
+/**
+ * rieltor.ua server-renders each listing as a `.catalog-card` with all fields
+ * we need in attributes/markup (verified against the live page):
+ *   - id     → `data-catalog-item-id`
+ *   - price  → `data-label` ("20 000 грн", always UAH for the UA market)
+ *   - specs  → `.catalog-card-details` ("2 кімнати · 80 / 60 / 10 м² · поверх…")
+ *   - region → `.catalog-card-region` links ("Київ", "Дарницький р-н")
+ *   - author → `.catalog-card-author-subtitle` ("Рієлтор" | "Власник")
+ */
+export function parseRieltor(html: string, baseUrl = 'https://rieltor.ua'): RawListing[] {
+  try {
+    const $ = cheerio.load(html);
+    const out: RawListing[] = [];
+    $('.catalog-card').each((_, el) => {
+      const card = $(el);
+      const id = card.attr('data-catalog-item-id');
+      if (!id) return;
+
+      const details = card.find('.catalog-card-details').text().replace(/\s+/g, ' ').trim();
+      const rooms = toInt((details.match(/(\d+)[\s-]*кімнат/i) ?? [])[1]);
+      // "80 / 60 / 10 м²" → 80 (total); "45 м²" → 45. First number before м².
+      const area = toFloat((details.match(/([\d.,]+)(?:\s*\/\s*[\d.,]+)*\s*м²/) ?? [])[1]);
+
+      const regions = card
+        .find('.catalog-card-region a')
+        .map((_, a) => $(a).text().trim())
+        .get()
+        .filter(Boolean);
+      const district = regions.find((t) => /р-н|район/i.test(t));
+      const address = card.find('.catalog-card-address').first().text().trim();
+
+      const href =
+        card.find('a.catalog-card-media').first().attr('href') ||
+        card.find('a[href*="/view/"]').first().attr('href') ||
+        `${baseUrl}/flats-rent/view/${id}/`;
+
+      const img = card.find('img.offer-photo-slider-slide-image').first();
+      const imageUrl =
+        img.attr('src') ||
+        img.attr('data-src') ||
+        card.find('img.offer-photo-slider-blurred-bg').first().attr('src') ||
+        undefined;
+
+      const subtitle = card.find('.catalog-card-author-subtitle').first().text().toLowerCase();
+
+      const title =
+        [
+          rooms ? `${rooms}-кімн.` : null,
+          area ? `${Math.round(area)} м²` : null,
+          address || district || null,
+        ]
+          .filter(Boolean)
+          .join(', ') || `Квартира ${id}`;
+
+      out.push({
+        id,
+        title,
+        price: toInt(card.attr('data-label') || card.find('.catalog-card-price-title').first().text()),
+        currency: 'грн',
+        area: area === null ? null : Math.round(area),
+        rooms,
+        city: regions[0] || undefined,
+        district: district || undefined,
+        url: absoluteUrl(href, baseUrl),
+        imageUrl,
+        // rieltor is realtor-first; only "Власник" is a private owner.
+        isBusiness: !subtitle.includes('власник'),
+      });
+    });
+    return out;
+  } catch {
+    return [];
+  }
+}

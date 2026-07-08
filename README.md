@@ -3,9 +3,9 @@
 A Telegram bot that monitors **Ukrainian housing sites** against user-defined,
 **per-site** filters and sends **instant notifications** when a new matching
 listing appears — or when the price of one you've already seen changes. Each
-alert says which site it came from. **DOM.RIA** is live today (real data via its
-official API); the engine supports OLX, LUN, Flatfy, Rieltor, BirdRent and Josti
-too, to be wired up next.
+alert says which site it came from. **DOM.RIA** and **Rieltor** are live today
+(real data); the engine also supports OLX, LUN, Flatfy, BirdRent and Josti, to be
+wired up next.
 
 Built with **NestJS + TypeScript**, **Telegraf** (long polling, no webhook) and
 **Redis** for all state. Runs as an isolated Docker Compose stack with **no
@@ -93,22 +93,24 @@ compact `SiteSpec` in `src/sources/site-specs.ts` and its id to
 `KNOWN_SOURCE_IDS`; no other wiring changes.
 
 Which sites are active is set by **`SOURCES`** (comma-separated). Filters are
-**per site** — each profile targets one source, and `/newsearch` runs that
-site's own question flow. Today the wizard drives **DOM.RIA**; the other sources
-exist in the engine but aren't wired to the wizard yet.
+**per site** — each profile targets one source, and `/newsearch` starts by asking
+which site, then runs that site's question flow. The wizard drives **DOM.RIA** and
+**Rieltor** today; the other sources exist in the engine but aren't wired to the
+wizard yet.
 
 | id | Site | data |
 |---|---|---|
 | `domria` | dom.ria.com | **official API** (needs `DOMRIA_API_KEY`) — real, tuned |
-| `olx` | OLX.ua | HTML (`__NEXT_DATA__` → cards) — best-effort, not yet wired |
-| `rieltor` | rieltor.ua | HTML — best-effort, not yet wired |
+| `rieltor` | rieltor.ua | HTML (server-rendered cards) — real, verified live |
+| `olx` | OLX.ua | HTML (`__NEXT_DATA__` → cards) — blocked from datacenter IPs (403) |
 | `lun` | lun.ua | HTML/SPA — best-effort, not yet wired |
 | `flatfy` | flatfy.ua | HTML/SPA — best-effort, not yet wired |
 | `birdrent` | birdrent.com | HTML — best-effort, not yet wired |
 | `josti` | josti.com.ua | HTML — best-effort, not yet wired |
 
-⚠️ **The HTML parsers are best-effort.** Only DOM.RIA exposes a stable public
-API; the rest need tuning against the live sites and are defensive (return `[]`
+⚠️ **The HTML parsers are best-effort.** DOM.RIA exposes a stable public API and
+Rieltor's cards are parsed from verified live markup; the rest need tuning against
+the live sites and are defensive (return `[]`
 on mismatch). DOM.RIA also filters by city geo-id (Kyiv mapped; add more as
 needed) and skips raion-level filtering for now.
 

@@ -31,12 +31,15 @@ const feed = async (wizard: NewSearchWizard, ctx: any, text: string) => {
   await wizard.onText(ctx as any);
 };
 
-describe('NewSearchWizard (DOM.RIA flow)', () => {
+describe('NewSearchWizard', () => {
   it('completes the flow and upserts a DOM.RIA filter', async () => {
     const { wizard, profiles } = build();
     const ctx = makeCtx();
     await wizard.onEnter(ctx as any);
-    expect(ctx.scene.state.stage).toBe('operation');
+    expect(ctx.scene.state.stage).toBe('site');
+
+    await feed(wizard, ctx, '🟢 DOM.RIA');
+    expect(ctx.scene.state).toMatchObject({ source: 'domria', stage: 'operation' });
 
     await feed(wizard, ctx, '🔑 Довгострокова оренда');
     expect(ctx.scene.state).toMatchObject({ operation: 'rent', stage: 'city' });
@@ -73,11 +76,42 @@ describe('NewSearchWizard (DOM.RIA flow)', () => {
     const { wizard } = build();
     const ctx = makeCtx();
     await wizard.onEnter(ctx as any);
+    await feed(wizard, ctx, '🟢 DOM.RIA');
     await feed(wizard, ctx, '🏢 Продаж');
     expect(ctx.scene.state.operation).toBe('sale');
     await feed(wizard, ctx, 'Київ');
     await feed(wizard, ctx, '4+');
     expect(ctx.scene.state.rooms).toBe(4);
+  });
+
+  it('routes to Rieltor when that site is chosen', async () => {
+    const { wizard, profiles } = build();
+    const ctx = makeCtx();
+    await wizard.onEnter(ctx as any);
+    await feed(wizard, ctx, '🔵 Rieltor');
+    expect(ctx.scene.state).toMatchObject({ source: 'rieltor', stage: 'operation' });
+
+    await feed(wizard, ctx, '🔑 Довгострокова оренда');
+    await feed(wizard, ctx, '🏙 Київ');
+    await feed(wizard, ctx, 'Будь-яка');
+    await feed(wizard, ctx, 'до 20000');
+    await feed(wizard, ctx, 'до 80');
+    expect(profiles.upsertForSource).toHaveBeenCalledWith(
+      7,
+      7,
+      'rieltor',
+      expect.objectContaining({ city: 'Київ', operation: 'rent' }),
+      expect.stringContaining('Rieltor'),
+    );
+  });
+
+  it('re-asks on an unrecognized site', async () => {
+    const { wizard } = build();
+    const ctx = makeCtx();
+    ctx.scene.state = { stage: 'site' };
+    await feed(wizard, ctx, 'щось');
+    expect(ctx.scene.state.stage).toBe('site');
+    expect(ctx.scene.state.source).toBeUndefined();
   });
 
   it('"будь-яка" rooms clears the filter', async () => {
@@ -120,10 +154,11 @@ describe('NewSearchWizard (DOM.RIA flow)', () => {
     expect(ctx.scene.state.stage).toBe('operation');
   });
 
-  it('flags editing when a filter already exists', async () => {
+  it('flags editing when a filter already exists for the chosen site', async () => {
     const { wizard } = build({ id: 'x', source: 'domria' });
     const ctx = makeCtx();
     await wizard.onEnter(ctx as any);
+    await feed(wizard, ctx, '🟢 DOM.RIA');
     expect(ctx.scene.state.editing).toBe(true);
   });
 
@@ -140,6 +175,6 @@ describe('NewSearchWizard (DOM.RIA flow)', () => {
     const ctx = makeCtx();
     ctx.scene.state = { stage: 'bogus' };
     await feed(wizard, ctx, 'x');
-    expect(ctx.scene.state.stage).toBe('operation');
+    expect(ctx.scene.state.stage).toBe('site');
   });
 });

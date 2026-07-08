@@ -8,6 +8,7 @@ import {
   extractNextData,
   mapOffer,
   parseCards,
+  parseRieltor,
   toFloat,
   toInt,
 } from './parsing.util';
@@ -82,28 +83,28 @@ const olx: SiteSpec = {
 };
 
 // --- rieltor.ua ------------------------------------------------------------
+// Server-rendered HTML (not Next.js); reachable from the droplet (unlike OLX).
+// URL filters are real and verified live: price_min/price_max, rooms=N (exact
+// 1–3), f-owners=1. Area has no working URL param → filtered client-side. City
+// is Kyiv-only for now (the default flats-rent/ path). Newest-first, ~20 cards.
+function rieltorUrl(c: SearchCriteria): string {
+  const seg = c.operation === 'sale' ? 'flats-sale' : 'flats-rent';
+  const p = new URLSearchParams();
+  if (c.priceMin != null) p.set('price_min', String(c.priceMin));
+  if (c.priceMax != null) p.set('price_max', String(c.priceMax));
+  // rooms=N filters an exact count; "4+" (rooms>=4) has no URL form → client-side.
+  if (c.rooms != null && c.rooms >= 1 && c.rooms <= 3) p.set('rooms', String(c.rooms));
+  if (c.ownerOnly) p.set('f-owners', '1');
+  const qs = p.toString();
+  return `https://rieltor.ua/${seg}/${qs ? `?${qs}` : ''}`;
+}
+
 const rieltor: SiteSpec = {
   id: 'rieltor',
   label: 'Rieltor',
   kind: 'html',
-  buildUrl: (c) => {
-    const p = priceAreaQuery(c, {
-      q: 'q',
-      priceMin: 'price_min',
-      priceMax: 'price_max',
-      areaMin: 'area_min',
-      areaMax: 'area_max',
-    });
-    return `https://rieltor.ua/flats-rent/?${p.toString()}`;
-  },
-  parse: (html) =>
-    nextDataThenCards(html, 'https://rieltor.ua', {
-      card: '.catalog-card, [class*="offer-card"]',
-      title: '.offer-title, h3, h2',
-      price: '[class*="price"]',
-      link: 'a[href]',
-      image: 'img',
-    }),
+  buildUrl: (c) => rieltorUrl(c),
+  parse: (html) => parseRieltor(html, 'https://rieltor.ua'),
 };
 
 // --- DOM.RIA (official API — real data when DOMRIA_API_KEY is set) ---------

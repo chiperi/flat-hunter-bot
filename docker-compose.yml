@@ -24,7 +24,7 @@ services:
       - REDIS_URL=redis://redis:6379
       # Non-secret operational config (overridable via the deploy shell env).
       - REDIS_KEY_PREFIX=${REDIS_KEY_PREFIX:-olx}
-      - SOURCES=${SOURCES:-domria}
+      - SOURCES=${SOURCES:-domria,rieltor}
       - POLL_INTERVAL_MS=${POLL_INTERVAL_MS:-300000}
       - POLL_JITTER_MS=${POLL_JITTER_MS:-60000}
       - DOMRIA_MAX_DETAILS=${DOMRIA_MAX_DETAILS:-10}
