@@ -54,10 +54,11 @@ export function searchSignature(c: SearchCriteria): string {
 export function matchesCriteria(listing: Listing, c: SearchCriteria): boolean {
   if (c.ownerOnly && listing.isBusiness) return false;
 
-  if (listing.price !== null) {
-    if (c.priceMin != null && listing.price < c.priceMin) return false;
-    if (c.priceMax != null && listing.price > c.priceMax) return false;
-  }
+  // No price ("Ціна договірна") → skip: can't be judged against a budget and the
+  // user asked not to see these.
+  if (listing.price == null) return false;
+  if (c.priceMin != null && listing.price < c.priceMin) return false;
+  if (c.priceMax != null && listing.price > c.priceMax) return false;
 
   if (listing.area !== null) {
     if (c.areaMin != null && listing.area < c.areaMin) return false;

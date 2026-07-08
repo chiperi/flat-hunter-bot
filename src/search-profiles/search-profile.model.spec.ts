@@ -69,9 +69,13 @@ describe('matchesCriteria', () => {
     expect(matchesCriteria(listing({ district: 'Центральний' }), c)).toBe(true);
     expect(matchesCriteria(listing({ district: 'Поділ' }), c)).toBe(false);
   });
-  it('skips price/area checks when the listing has none', () => {
-    const c = criteria({ priceMin: 5000, areaMin: 30 });
-    expect(matchesCriteria(listing({ price: null, area: null }), c)).toBe(true);
+  it('excludes a listing with no price ("Ціна договірна"), even with no price filter', () => {
+    expect(matchesCriteria(listing({ price: null }), criteria())).toBe(false);
+    expect(matchesCriteria(listing({ price: null }), criteria({ priceMax: 15000 }))).toBe(false);
+  });
+  it('skips the area check when the listing has no area', () => {
+    const c = criteria({ areaMin: 30 });
+    expect(matchesCriteria(listing({ area: null }), c)).toBe(true);
   });
 });
 
