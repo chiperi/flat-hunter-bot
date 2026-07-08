@@ -15,13 +15,12 @@ import {
 /**
  * One spec per tracked site.
  *
- * ⚠️ Real HTTP parsing is BEST-EFFORT. None of these sites has a stable public
+ * ⚠️ The HTML parsers are BEST-EFFORT. None of these sites has a stable public
  * contract for this use case (except DOM.RIA's official API), their markup
  * drifts, and several are SPAs / may block datacenter IPs. Treat every
  * `buildUrl`/`parse` below as a starting point to tune against the live site.
- * All parsers are defensive (return [] on mismatch). `SCRAPER=mock` — the
- * default — sidesteps all of this and exercises the whole pipeline for every
- * source without network.
+ * All parsers are defensive (return [] on mismatch). DOM.RIA is the tuned,
+ * working source; the others are wired but not yet driven by the wizard.
  *
  * Note on overlap: lun.ua and flatfy.ua are the same company (LUN), and Flatfy
  * is itself an aggregator that already pulls OLX + DOM.RIA — enabling all of
@@ -108,19 +107,56 @@ const rieltor: SiteSpec = {
 };
 
 // --- DOM.RIA (official API — real data when DOMRIA_API_KEY is set) ---------
+//
+// RIA filters location by numeric geo ids (verified against the live API), so a
+// free-text city can't be passed directly. This small map covers the common
+// cities; an unmapped city is skipped (returning all-Ukraine would flood the
+// user, since the client-side filter doesn't match RIA's Russian place names).
+// Extend as needed — the search endpoint takes state_id + city_id.
+export const DOMRIA_CITY_GEO: Record<string, { state: number; city: number }> = {
+  київ: { state: 10, city: 10 },
+  киев: { state: 10, city: 10 },
+  kyiv: { state: 10, city: 10 },
+};
+
+function domriaGeo(city: string): { state: number; city: number } | null {
+  return DOMRIA_CITY_GEO[city.trim().toLowerCase()] ?? null;
+}
+
+function domriaTitle(info: any, id: number): string {
+  const area = toFloat(info?.total_square_meters);
+  return [
+    info?.rooms_count ? `${info.rooms_count}-кімн.` : `Квартира ${id}`,
+    area ? `${Math.round(area)} м²` : null,
+    info?.street_name || info?.district_name || null,
+  ]
+    .filter(Boolean)
+    .join(', ');
+}
+
 const domria: SiteSpec = {
   id: 'domria',
   label: 'DOM.RIA',
   fetch: async (ctx, c) => {
     const { apiKey, baseUrl } = ctx.cfg.domria;
-    if (!apiKey) return []; // no key → nothing to fetch (log-free, expected)
+    if (!apiKey) return []; // no key → nothing to fetch (expected)
 
-    // Best-effort search params (category 1 = flats, operation 3 = long-term rent).
-    const search = new URLSearchParams({ api_key: apiKey, category: '1', operation_type: '3', lang_id: '4' });
-    if (c.priceMin != null) search.set('firstIterationBound', String(c.priceMin));
-    if (c.priceMax != null) search.set('price_cur', String(c.priceMax));
+    const geo = domriaGeo(c.city);
+    if (!geo) return []; // unmapped city → skip rather than flood with all-Ukraine
+
+    // category 1 = flats, operation 3 = long-term rent. Results come
+    // newest-first (id descending), so the first N are the freshest. Price/area
+    // are filtered client-side (matchesCriteria) — accurate and language-proof.
+    const search = new URLSearchParams({
+      api_key: apiKey,
+      category: '1',
+      // 3 = long-term rent, 1 = sale (RIA operation types).
+      operation_type: c.operation === 'sale' ? '1' : '3',
+      state_id: String(geo.state),
+      city_id: String(geo.city),
+      lang_id: '4',
+    });
     const found: any = await ctx.getJson(`${baseUrl}/dom/search?${search.toString()}`);
-    // Cap detail fetches — one API call per listing is the biggest amplifier.
     const ids: number[] = Array.isArray(found?.items)
       ? found.items.slice(0, ctx.cfg.domria.maxDetails)
       : [];
@@ -129,22 +165,27 @@ const domria: SiteSpec = {
     for (const id of ids) {
       try {
         const info: any = await ctx.getJson(`${baseUrl}/dom/info/${id}?api_key=${apiKey}&lang_id=4`);
-        const url = info?.beautiful_url
-          ? absoluteUrl(String(info.beautiful_url), 'https://dom.ria.com/uk')
-          : `https://dom.ria.com/uk/realty-${id}.html`;
+        const area = toFloat(info?.total_square_meters);
         listings.push({
           id: String(id),
-          title: String(info?.description_title || info?.beautiful_realty_name || `Квартира ${id}`).trim(),
-          price: toInt(info?.price ?? info?.priceArr?.['3'] ?? info?.priceArr?.['1']),
+          title: domriaTitle(info, id),
+          price: toInt(info?.price ?? info?.priceArr?.['3']),
           currency: 'грн',
-          area: toFloat(info?.total_square_meters),
+          area: area === null ? null : Math.round(area),
+          rooms: toInt(info?.rooms_count),
           city: info?.city_name ?? undefined,
-          district: info?.district_name ?? undefined,
-          url,
+          // RIA's district is a micro-district (neighbourhood), not the admin
+          // raion the user picks — leave it unset so the raion filter is skipped
+          // for DOM.RIA (it filters by city + price + area). Raion-level filtering
+          // is a follow-up.
+          district: undefined,
+          url: info?.beautiful_url
+            ? absoluteUrl(String(info.beautiful_url), 'https://dom.ria.com/uk')
+            : `https://dom.ria.com/uk/realty-${id}.html`,
           imageUrl: info?.main_photo
-            ? `https://cdn.riastatic.com/photosnew/dom/photo/${info.main_photo}`
+            ? `https://cdn.riastatic.com/photosnew/${info.main_photo}`
             : undefined,
-          isBusiness: info?.is_owner === 0,
+          isBusiness: Boolean(info?.advert_type_id === 2 || info?.is_owner === 0),
         });
       } catch {
         // skip a single bad id

@@ -1,4 +1,5 @@
 import { SearchProfile } from '../search-profiles/search-profile.model';
+import { SOURCE_LABELS } from '../sources/listing.interface';
 
 /**
  * All user-facing bot copy in one place. Ukrainian by default (per the brief).
@@ -45,16 +46,22 @@ function fmtRange(min?: number, max?: number, unit = ''): string {
 export function describeProfile(p: SearchProfile): string {
   const c = p.criteria;
   const where = c.district ? `${esc(c.city)}, ${esc(c.district)}` : esc(c.city);
+  const site = SOURCE_LABELS[p.source] ?? esc(p.source);
+  const op = c.operation === 'sale' ? 'продаж' : 'оренда';
   const price = fmtRange(c.priceMin, c.priceMax, 'грн');
   const area = fmtRange(c.areaMin, c.areaMax, 'м²');
-  const owner = c.ownerOnly ? 'лише власники' : 'усі (з ріелторами)';
   const status = p.paused ? '⏸ призупинено' : '▶️ активний';
-  return (
-    `🔎 <b>${esc(p.name)}</b>  <code>${esc(p.id)}</code>\n` +
-    `   📍 ${where}\n` +
-    `   💰 ${price}   📐 ${area}\n` +
-    `   👤 ${owner}   ${status}`
-  );
+
+  const lines = [
+    `🔎 <b>${esc(p.name)}</b>  <code>${esc(p.id)}</code>`,
+    `   🌐 ${esc(site)}   ${op}`,
+    `   📍 ${where}`,
+  ];
+  if (c.rooms != null) lines.push(`   🚪 ${c.rooms >= 4 ? '4+' : c.rooms}-кімн.`);
+  lines.push(`   💰 ${price}   📐 ${area}`);
+  if (c.ownerOnly) lines.push('   👤 лише власники');
+  lines.push(`   ${status}`);
+  return lines.join('\n');
 }
 
 export const NO_SEARCHES =

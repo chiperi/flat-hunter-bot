@@ -24,8 +24,7 @@ services:
       - REDIS_URL=redis://redis:6379
       # Non-secret operational config (overridable via the deploy shell env).
       - REDIS_KEY_PREFIX=${REDIS_KEY_PREFIX:-olx}
-      - SCRAPER=${SCRAPER:-http}
-      - SOURCES=${SOURCES:-olx,rieltor,domria,lun,flatfy,birdrent,josti}
+      - SOURCES=${SOURCES:-domria}
       - POLL_INTERVAL_MS=${POLL_INTERVAL_MS:-300000}
       - POLL_JITTER_MS=${POLL_JITTER_MS:-60000}
       - OLX_BASE_URL=${OLX_BASE_URL:-https://www.olx.ua}

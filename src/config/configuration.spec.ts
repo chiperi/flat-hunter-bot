@@ -21,19 +21,11 @@ describe('configuration', () => {
     expect(() => configuration()).toThrow(/malformed/);
   });
 
-  it('throws on an invalid SCRAPER mode', () => {
-    process.env.TELEGRAM_BOT_TOKEN = VALID_TOKEN;
-    process.env.SCRAPER = 'weird';
-    expect(() => configuration()).toThrow(/SCRAPER/);
-  });
-
   it('builds config with sensible defaults', () => {
     process.env.TELEGRAM_BOT_TOKEN = VALID_TOKEN;
-    delete process.env.SCRAPER;
     delete process.env.SOURCES;
     delete process.env.ALLOWED_USER_IDS;
     const cfg = configuration();
-    expect(cfg.sources.mode).toBe('mock');
     expect(cfg.sources.enabled).toEqual([
       'olx',
       'rieltor',
@@ -49,15 +41,13 @@ describe('configuration', () => {
     expect(cfg.sources.domria.maxDetails).toBe(10);
   });
 
-  it('parses allowlist, sources (dropping unknown), and mode', () => {
+  it('parses allowlist and sources (dropping unknown ids)', () => {
     process.env.TELEGRAM_BOT_TOKEN = VALID_TOKEN;
     process.env.ALLOWED_USER_IDS = '1, 2 ,x,3';
     process.env.SOURCES = 'olx, unknown ,domria';
-    process.env.SCRAPER = 'http';
     const cfg = configuration();
     expect(cfg.telegram.allowedUserIds).toEqual([1, 2, 3]);
     expect(cfg.sources.enabled).toEqual(['olx', 'domria']);
-    expect(cfg.sources.mode).toBe('http');
   });
 
   it('reads DOM.RIA + proxy settings', () => {

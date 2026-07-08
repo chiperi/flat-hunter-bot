@@ -55,4 +55,29 @@ describe('SourceRegistry', () => {
     expect(reg.count).toBe(0);
     await expect(reg.fetchAll(criteria)).resolves.toEqual([]);
   });
+
+  it('exposes ids and has()', () => {
+    const reg = new SourceRegistry([src('a', async () => []), src('b', async () => [])]);
+    expect(reg.ids).toEqual(['a', 'b']);
+    expect(reg.has('a')).toBe(true);
+    expect(reg.has('z')).toBe(false);
+  });
+
+  it('fetchOne targets a single source', async () => {
+    const reg = new SourceRegistry([
+      src('a', async () => [listing('1', 'a')]),
+      src('b', async () => [listing('2', 'b')]),
+    ]);
+    expect((await reg.fetchOne('a', criteria)).map((l) => l.id)).toEqual(['1']);
+  });
+
+  it('fetchOne returns [] for an unknown or throwing source', async () => {
+    const reg = new SourceRegistry([
+      src('b', async () => {
+        throw new Error('boom');
+      }),
+    ]);
+    await expect(reg.fetchOne('missing', criteria)).resolves.toEqual([]);
+    await expect(reg.fetchOne('b', criteria)).resolves.toEqual([]);
+  });
 });

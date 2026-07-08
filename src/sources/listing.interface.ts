@@ -14,8 +14,13 @@ export interface SearchCriteria {
   priceMax?: number;
   areaMin?: number;
   areaMax?: number;
-  /** true = private-owner listings only; false = include agencies/realtors. */
+  /** true = private-owner listings only; false = include agencies/realtors.
+   *  Used by sources that expose it (e.g. OLX); ignored otherwise. */
   ownerOnly: boolean;
+  /** rent (long-term) vs sale — a per-site field (DOM.RIA). Defaults to rent. */
+  operation?: 'rent' | 'sale';
+  /** Room count filter: 1, 2, 3, or 4 meaning "4+"; undefined = any. */
+  rooms?: number;
 }
 
 /** A normalized listing before the source tags it (source/sourceLabel added by
@@ -28,6 +33,8 @@ export interface RawListing {
   price: number | null;
   currency: string;
   area: number | null;
+  /** Number of rooms, when the source publishes it. */
+  rooms?: number | null;
   city?: string;
   district?: string;
   url: string;
@@ -62,3 +69,14 @@ export const KNOWN_SOURCE_IDS = [
   'birdrent',
   'josti',
 ] as const;
+
+/** Display labels per source id (for messages that only have the id). */
+export const SOURCE_LABELS: Record<string, string> = {
+  olx: 'OLX',
+  rieltor: 'Rieltor',
+  domria: 'DOM.RIA',
+  lun: 'ЛУН',
+  flatfy: 'Flatfy',
+  birdrent: 'BirdRent',
+  josti: 'Josti',
+};

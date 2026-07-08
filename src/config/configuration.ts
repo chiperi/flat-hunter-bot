@@ -5,8 +5,6 @@ import { KNOWN_SOURCE_IDS } from '../sources/listing.interface';
  * `ConfigService<AppConfig, true>` rather than touching `process.env` directly.
  */
 
-export type SourceMode = 'mock' | 'http';
-
 export interface TelegramConfig {
   botToken: string;
   allowedUserIds: number[];
@@ -23,11 +21,9 @@ export interface PollingConfig {
 }
 
 export interface SourcesConfig {
-  /** mock = network-free fake data (default); http = real best-effort scraping. */
-  mode: SourceMode;
   /** Which site sources are active. */
   enabled: string[];
-  /** Shared HTTP knobs for all http-mode sources. */
+  /** Shared HTTP knobs for all sources. */
   timeoutMs: number;
   maxRetries: number;
   proxyUrl?: string;
@@ -76,11 +72,6 @@ export default (): AppConfig => {
     );
   }
 
-  const mode = (process.env.SCRAPER?.trim() as SourceMode) || 'mock';
-  if (mode !== 'mock' && mode !== 'http') {
-    throw new Error(`SCRAPER must be "mock" or "http", got "${mode}".`);
-  }
-
   // SOURCES=olx,domria,... — default: every known source. Unknown ids dropped.
   const requested = parseCsv(process.env.SOURCES);
   const known = new Set<string>(KNOWN_SOURCE_IDS);
@@ -102,7 +93,6 @@ export default (): AppConfig => {
       jitterMs: parseIntEnv(process.env.POLL_JITTER_MS, 60 * 1000),
     },
     sources: {
-      mode,
       enabled,
       timeoutMs: parseIntEnv(process.env.SCRAPER_TIMEOUT_MS, 15000),
       maxRetries: parseIntEnv(process.env.SCRAPER_MAX_RETRIES, 3),

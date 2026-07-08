@@ -5,6 +5,7 @@ const profile = (over: Partial<SearchProfile> = {}): SearchProfile => ({
   id: 'abc123',
   userId: 1,
   chatId: 1,
+  source: 'domria',
   name: 'Мій пошук',
   criteria: { city: 'Київ', ownerOnly: true },
   paused: false,
@@ -34,13 +35,24 @@ describe('describeProfile', () => {
   it('shows paused status', () => {
     expect(describeProfile(profile({ paused: true }))).toContain('призупинено');
   });
-  it('formats a full price/area range', () => {
+  it('formats a full price/area range with source + operation', () => {
     const text = describeProfile(
       profile({ criteria: { city: 'Київ', priceMin: 5000, priceMax: 15000, areaMin: 30, areaMax: 60, ownerOnly: false } }),
     );
     expect(text).toContain('5000–15000');
     expect(text).toContain('30–60');
-    expect(text).toContain('усі');
+    expect(text).toContain('DOM.RIA');
+    expect(text).toContain('оренда');
+  });
+
+  it('shows rooms and sale operation, and owner only when constrained', () => {
+    const rentText = describeProfile(profile({ criteria: { city: 'Київ', rooms: 4, ownerOnly: false } }));
+    expect(rentText).toContain('4+-кімн.');
+    const saleOwner = describeProfile(
+      profile({ source: 'olx', criteria: { city: 'Київ', operation: 'sale', ownerOnly: true } }),
+    );
+    expect(saleOwner).toContain('продаж');
+    expect(saleOwner).toContain('лише власники');
   });
   it('formats "від"/"до"/"будь-яка" bounds', () => {
     expect(describeProfile(profile({ criteria: { city: 'Київ', priceMin: 5000, ownerOnly: true } }))).toContain(

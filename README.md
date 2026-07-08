@@ -1,9 +1,11 @@
 # Flat Hunter Bot 🏠🔎
 
-A Telegram bot that monitors **several Ukrainian housing sites** (OLX, DOM.RIA,
-LUN, Flatfy, Rieltor, BirdRent, Josti) against user-defined filters and sends
-**instant notifications** when a new matching listing appears — or when the price
-of one you've already seen changes. Each alert says which site it came from.
+A Telegram bot that monitors **Ukrainian housing sites** against user-defined,
+**per-site** filters and sends **instant notifications** when a new matching
+listing appears — or when the price of one you've already seen changes. Each
+alert says which site it came from. **DOM.RIA** is live today (real data via its
+official API); the engine supports OLX, LUN, Flatfy, Rieltor, BirdRent and Josti
+too, to be wired up next.
 
 Built with **NestJS + TypeScript**, **Telegraf** (long polling, no webhook) and
 **Redis** for all state. Runs as an isolated Docker Compose stack with **no
@@ -13,8 +15,9 @@ inbound ports** — it only makes outbound calls to Telegram and the housing sit
 
 ## Features
 
-- **Multiple sources** — one search fans out to every enabled site and merges
-  the results; dedup is namespaced per site (`source:id`) so nothing collides.
+- **Per-site filters** — each search targets one site with that site's own
+  fields/buttons; dedup is namespaced per site (`source:id`). DOM.RIA is live
+  today (real data via its official API); more sites plug in behind one interface.
 - **Multiple independent search profiles per user** — e.g. "apartment for me"
   + "garage as investment" — each polling and notifying on its own.
 - **Filters:** city, district, price range, area range (m²), owner-only vs.
@@ -89,77 +92,51 @@ scheduler never knows or cares which sites are active. Adding a site = add a
 compact `SiteSpec` in `src/sources/site-specs.ts` and its id to
 `KNOWN_SOURCE_IDS`; no other wiring changes.
 
-Two things are configurable:
+Which sites are active is set by **`SOURCES`** (comma-separated). Filters are
+**per site** — each profile targets one source, and `/newsearch` runs that
+site's own question flow. Today the wizard drives **DOM.RIA**; the other sources
+exist in the engine but aren't wired to the wizard yet.
 
-- **`SCRAPER`** = global mode: `mock` (default, **no network** — every source
-  emits deterministic fake listings so you can exercise the whole pipeline) or
-  `http` (real best-effort fetching).
-- **`SOURCES`** = which sites are active (comma-separated; default = all).
-
-| id | Site | http-mode data |
+| id | Site | data |
 |---|---|---|
-| `olx` | OLX.ua | HTML (`__NEXT_DATA__` → cards) — best-effort |
-| `rieltor` | rieltor.ua | HTML — best-effort |
-| `domria` | dom.ria.com | **official API** (needs `DOMRIA_API_KEY`) — real data |
-| `lun` | lun.ua | HTML/SPA — best-effort |
-| `flatfy` | flatfy.ua | HTML/SPA — best-effort |
-| `birdrent` | birdrent.com | HTML — best-effort |
-| `josti` | josti.com.ua | HTML — best-effort |
+| `domria` | dom.ria.com | **official API** (needs `DOMRIA_API_KEY`) — real, tuned |
+| `olx` | OLX.ua | HTML (`__NEXT_DATA__` → cards) — best-effort, not yet wired |
+| `rieltor` | rieltor.ua | HTML — best-effort, not yet wired |
+| `lun` | lun.ua | HTML/SPA — best-effort, not yet wired |
+| `flatfy` | flatfy.ua | HTML/SPA — best-effort, not yet wired |
+| `birdrent` | birdrent.com | HTML — best-effort, not yet wired |
+| `josti` | josti.com.ua | HTML — best-effort, not yet wired |
 
-⚠️ **Real parsing is best-effort.** Only DOM.RIA exposes a stable public API;
-the rest are scraped, their markup drifts, several are SPAs, and datacenter IPs
-may be blocked. Treat each spec's `buildUrl`/`parse` as a starting point to tune
-against the live site. Every source returns `[]` on any failure (never throws),
-and `mock` — the default — sidesteps all of it.
-
-> **Overlap:** `lun` and `flatfy` are the same company (LUN), and Flatfy is
-> itself an aggregator that already pulls OLX + DOM.RIA. Enabling everything will
-> surface the same physical flat more than once (dedup is per source, so each
-> fires independently). Trim `SOURCES` if that's noisy.
+⚠️ **The HTML parsers are best-effort.** Only DOM.RIA exposes a stable public
+API; the rest need tuning against the live sites and are defensive (return `[]`
+on mismatch). DOM.RIA also filters by city geo-id (Kyiv mapped; add more as
+needed) and skips raion-level filtering for now.
 
 ---
 
 ## Rate limits & avoiding blocks
 
-Real (`http`-mode) request volume per polling cycle is roughly:
+DOM.RIA's API is 2-step (one search call + one detail call per listing), so it
+does up to `DOMRIA_MAX_DETAILS` (default **10**) detail calls per search — the
+biggest request amplifier, which is why it's capped and configurable.
 
-```
-requests ≈ (distinct searches) × (enabled sources)      [+ DOM.RIA extra]
-```
-
-DOM.RIA is special: its API is 2-step (one search call + one detail call per
-listing), so it adds up to `DOMRIA_MAX_DETAILS` (default **10**) extra calls per
-search — the single biggest amplifier, which is why it's capped and configurable.
-
-**In `mock` mode (the default) the network is never touched — zero risk.** The
-concern only applies once you set `SCRAPER=http`. Two realistic failure modes:
+Two realistic failure modes:
 
 1. **DOM.RIA API quota** — with a free key, heavy polling can exhaust the daily
-   quota. Mitigate: keep `DOMRIA_MAX_DETAILS` low, use a conservative
-   `POLL_INTERVAL_MS`, and don't run dozens of distinct searches.
+   quota. Mitigate: keep `DOMRIA_MAX_DETAILS` low and `POLL_INTERVAL_MS`
+   conservative.
 2. **Anti-scraping on the HTML sites** — the droplet is a datacenter IP, which
-   OLX/LUN/Rieltor/etc. sometimes rate-limit or block.
+   the HTML sites may rate-limit or block (relevant once those are wired).
 
-**What's already built in** (see `src/sources/http-listing-source.ts`):
-jittered poll interval (`POLL_INTERVAL_MS ± POLL_JITTER_MS`), retry with
-exponential backoff + full jitter, rotating User-Agents, a small random delay
-before every request, and **identical-search dedup** (one fetch per unique
-search per cycle, not per profile). Sources run concurrently but across
-*different* hosts, so no single host is hit more than once per search.
+**What's already built in** (`src/sources/http-listing-source.ts`): jittered
+poll interval (`POLL_INTERVAL_MS ± POLL_JITTER_MS`), retry with exponential
+backoff + full jitter, rotating User-Agents, a small random delay before every
+request, and **identical-search dedup** (one fetch per unique per-site search
+per cycle).
 
-**Knobs to turn down the volume:**
-
-| Lever | Effect |
-|---|---|
-| `POLL_INTERVAL_MS` (raise to 600000 = 10 min) | fewer cycles → fewer requests |
-| `SOURCES` (trim to the sites you actually want) | fewer requests per cycle; also kills flatfy/lun overlap |
-| `DOMRIA_MAX_DETAILS` (lower) | fewer DOM.RIA API calls |
-| `HTTP_PROXY_URL` (residential/rotating proxy) | dodge datacenter-IP blocks |
-| `SCRAPER=mock` | zero external requests |
-
-**Recommended rollout:** start on `mock`, then enable `http` with a small
-`SOURCES` list and a 10-minute interval, watch the logs for `HTTP 4xx/429`
-warnings per source, and scale up (or add a proxy / DOM.RIA key) from there.
+**Knobs to turn down the volume:** raise `POLL_INTERVAL_MS` (e.g. 600000 =
+10 min), lower `DOMRIA_MAX_DETAILS`, trim `SOURCES`, or set `HTTP_PROXY_URL`
+(residential/rotating proxy) to dodge datacenter-IP blocks.
 
 ---
 
@@ -179,15 +156,15 @@ npm install
 # 2. Configure
 cp .env.example .env
 #   set TELEGRAM_BOT_TOKEN and ALLOWED_USER_IDS (at minimum)
-#   keep SCRAPER=mock to try it without hitting any site
+#   set DOMRIA_API_KEY for real DOM.RIA data (SOURCES=domria)
 #   set REDIS_URL=redis://127.0.0.1:6379 for a local redis
 
 # 3. Run (watch mode)
 npm run start:dev
 ```
 
-Then message your bot: `/start` → `/newsearch`. With `SCRAPER=mock` you'll start
-getting (fake) notifications within a poll cycle.
+Then message your bot: `/start` → `/newsearch`. With a DOM.RIA key set you'll
+get real listings within a poll cycle.
 
 > Tip: lower `POLL_INTERVAL_MS` (e.g. `20000`) while developing to see alerts
 > quickly.
@@ -277,13 +254,10 @@ workflow:
 
 | Variable | Default | Set it to… |
 |---|---|---|
-| `SCRAPER` | `mock` | `http` when ready for real scraping |
-| `SOURCES` | `olx` | e.g. `olx,domria` to add sites |
+| `SOURCES` | `domria` | which sites are active (comma-separated) |
 | `POLL_INTERVAL_MS` | `600000` | raise/lower the poll interval (ms) |
 
-So the **first deploy runs in `mock`** (bot fully works on fake data, zero
-external requests). To go live: set `SCRAPER=http`, pick `SOURCES`, add the
-`FLAT_HUNTER_DOMRIA_API_KEY` secret if using `domria`, and re-run the deploy.
+DOM.RIA needs the `FLAT_HUNTER_DOMRIA_API_KEY` secret to return data.
 
 ### One-time droplet setup
 
@@ -323,13 +297,12 @@ See [`.env.example`](.env.example) for the annotated list. Highlights:
 | `REDIS_KEY_PREFIX` | `olx` | namespaces every key |
 | `POLL_INTERVAL_MS` | `300000` | base poll interval (5 min) |
 | `POLL_JITTER_MS` | `60000` | ± random jitter per cycle |
-| `SCRAPER` | `mock` | global source mode: `mock` or `http` |
-| `SOURCES` | all | comma list of active sites (`olx,rieltor,domria,lun,flatfy,birdrent,josti`) |
-| `OLX_BASE_URL` | `https://www.olx.ua` | OLX http source only |
-| `OLX_CATEGORY_PATH` | `uk/nedvizhimost/kvartiry` | OLX http source only |
-| `DOMRIA_API_KEY` | — | DOM.RIA official API key; without it `domria` returns nothing in http mode |
+| `SOURCES` | `domria` | comma list of active sites (`olx,rieltor,domria,lun,flatfy,birdrent,josti`) |
+| `DOMRIA_API_KEY` | — | DOM.RIA official API key; without it `domria` returns nothing |
 | `DOMRIA_MAX_DETAILS` | `10` | cap on per-search DOM.RIA detail calls (rate-limit guard) |
-| `HTTP_PROXY_URL` | — | optional outbound proxy for all http sources |
+| `OLX_BASE_URL` | `https://www.olx.ua` | OLX source only |
+| `OLX_CATEGORY_PATH` | `uk/nedvizhimost/kvartiry` | OLX source only |
+| `HTTP_PROXY_URL` | — | optional outbound proxy for all sources |
 | `SCRAPER_TIMEOUT_MS` | `15000` | per-request timeout |
 | `SCRAPER_MAX_RETRIES` | `3` | retry-with-backoff attempts |
 | `LOG_LEVEL` | `log` | `error`\|`warn`\|`log`\|`debug`\|`verbose` |
@@ -363,15 +336,15 @@ push/PR.
 
 ## Known limitations / next steps
 
-- **Real per-site parsing needs tuning** against each live site (selectors /
-  params / location slugs); only DOM.RIA has an official API. Start on `mock`,
-  switch to `http` with a small `SOURCES` list, iterate. The `ListingSource`
-  interface means this won't ripple into the rest of the app.
-- **No cross-source dedup** — the same flat listed on two sites (e.g. via the
-  flatfy/lun overlap) notifies once per source. Trim `SOURCES` to avoid it.
+- **Only DOM.RIA is wired to the wizard.** The other sources exist in the engine
+  but their HTML parsers need tuning against the live sites and no wizard flow
+  drives them yet. The `ListingSource` interface keeps adding them isolated.
+- **DOM.RIA filtering** is city + price + area + rooms (Kyiv geo mapped; add
+  more cities as needed). Raion-level filtering is a follow-up — RIA's district
+  is a neighbourhood, not the admin raion the wizard offers.
 - **No price *history***, by design — only current-vs-last-seen is compared. Full
   trend history is the trigger to add a time-series store (SQLite/Postgres) later.
-- **Profile editing** in `/mysearches` is Pause/Resume/Delete for v1; to change
-  filters, delete and re-run `/newsearch`.
+- **Editing** a filter = re-run `/newsearch` (overwrites the site's filter);
+  `/mysearches` also has Pause/Resume/Delete.
 - **In-memory wizard session** — an interrupted `/newsearch` (e.g. bot restart
   mid-wizard) is simply restarted; saved profiles are unaffected (they're in Redis).

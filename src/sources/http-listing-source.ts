@@ -28,10 +28,8 @@ export interface SiteSpec {
 }
 
 /**
- * Runs a `SiteSpec`. In `mock` mode it fabricates stable, time-varying fake
- * listings (no network) so the full pipeline is demonstrable for every source;
- * in `http` mode it does the real best-effort fetch. Either way it stamps each
- * listing with `source`/`sourceLabel` and never throws (returns []).
+ * Runs a `SiteSpec` — does the real HTTP fetch, stamps each listing with
+ * `source`/`sourceLabel`, and never throws (returns [] on any failure).
  */
 export class HttpListingSource implements ListingSource {
   readonly id: string;
@@ -64,7 +62,7 @@ export class HttpListingSource implements ListingSource {
   }
 
   async fetchListings(criteria: SearchCriteria): Promise<Listing[]> {
-    const raw = this.cfg.mode === 'mock' ? this.mock(criteria) : await this.fetchReal(criteria);
+    const raw = await this.fetchReal(criteria);
     return raw.map((l) => ({ ...l, source: this.id, sourceLabel: this.label }));
   }
 
@@ -146,90 +144,4 @@ export class HttpListingSource implements ListingSource {
       return false;
     }
   }
-
-  // --- mock ---------------------------------------------------------------
-
-  /** Stable pool per (source, search) + one time-rotating "fresh" listing and a
-   *  drifting price, so new-listing and price-change alerts fire over cycles. */
-  private mock(criteria: SearchCriteria): RawListing[] {
-    const seed = `${this.id}|${mockSignature(criteria)}`;
-    const rand = mulberry32(hashString(seed));
-    const poolSize = 3 + Math.floor(rand() * 3); // 3–5 per source
-    const bucket = Math.floor(Date.now() / (10 * 60 * 1000));
-
-    const listings: RawListing[] = [];
-    for (let i = 0; i < poolSize; i++) {
-      listings.push(this.mockOne(criteria, `${seed}#${i}`, rand, i, bucket));
-    }
-    listings.push(this.mockOne(criteria, `${seed}#fresh`, mulberry32(bucket + hashString(seed)), 99, bucket));
-
-    return listings.filter((l) => this.roughMatch(l, criteria));
-  }
-
-  private mockOne(
-    c: SearchCriteria,
-    seedStr: string,
-    rand: () => number,
-    index: number,
-    bucket: number,
-  ): RawListing {
-    const id = `${this.id}-${hashString(seedStr)}-${index}`;
-    const minP = c.priceMin ?? 6000;
-    const maxP = c.priceMax ?? 20000;
-    let price = Math.round((minP + rand() * Math.max(0, maxP - minP)) / 100) * 100;
-    if (index === 0) price += (bucket % 5) * 250; // drift → price-change alert
-
-    const minA = c.areaMin ?? 30;
-    const maxA = c.areaMax ?? 80;
-    const area = Math.round(minA + rand() * Math.max(0, maxA - minA));
-    const rooms = 1 + Math.floor(rand() * 3);
-
-    return {
-      id,
-      title: `${rooms}-кімнатна квартира, ${area} м² (${this.label})`,
-      price,
-      currency: 'грн',
-      area,
-      city: c.city,
-      district: c.district || 'Центр',
-      url: `https://example.com/${this.id}/${id}`,
-      imageUrl: `https://picsum.photos/seed/${id}/600/400`,
-      isBusiness: !c.ownerOnly && rand() < 0.5,
-    };
-  }
-
-  private roughMatch(l: RawListing, c: SearchCriteria): boolean {
-    if (c.ownerOnly && l.isBusiness) return false;
-    if (l.price !== null) {
-      if (c.priceMin != null && l.price < c.priceMin) return false;
-      if (c.priceMax != null && l.price > c.priceMax) return false;
-    }
-    return true;
-  }
-}
-
-function mockSignature(c: SearchCriteria): string {
-  return [c.city, c.district ?? '', c.priceMin ?? '', c.priceMax ?? '', c.areaMin ?? '', c.areaMax ?? '', c.ownerOnly]
-    .join('|')
-    .toLowerCase();
-}
-
-function hashString(str: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-function mulberry32(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
 }

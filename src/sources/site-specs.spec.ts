@@ -72,34 +72,50 @@ describe('DOM.RIA spec', () => {
     await expect(SITE_SPECS.domria.fetch!(ctx as any, criteria)).resolves.toEqual([]);
   });
 
-  it('fetches search + details (capped) with a key', async () => {
+  it('skips an unmapped city without any API call', async () => {
+    const dcfg = { ...cfg, domria: { ...cfg.domria, apiKey: 'k' } };
+    const getJson = jest.fn();
+    const ctx = { cfg: dcfg, getHtml: jest.fn(), getJson };
+    await expect(
+      SITE_SPECS.domria.fetch!(ctx as any, { city: 'Гадяч', ownerOnly: false }),
+    ).resolves.toEqual([]);
+    expect(getJson).not.toHaveBeenCalled();
+  });
+
+  it('resolves Kyiv geo, fetches details (capped), and maps fields', async () => {
     const dcfg = { ...cfg, domria: { ...cfg.domria, apiKey: 'k' } };
     const getJson = jest
       .fn()
-      .mockResolvedValueOnce({ items: [1, 2, 3] }) // search — capped to maxDetails=2
+      .mockResolvedValueOnce({ items: [1, 2, 3] }) // newest-first; capped to maxDetails=2
       .mockResolvedValueOnce({
-        description_title: 'Квартира 1',
-        price: 9000,
+        rooms_count: 2,
         total_square_meters: '50',
+        price: 9000,
         city_name: 'Київ',
-        district_name: 'Центр',
+        street_name: 'Хрещатик',
         beautiful_url: 'realty-1',
-        main_photo: 'p1.jpg',
+        main_photo: 'a/b/p1.jpg',
         is_owner: 1,
       })
       .mockRejectedValueOnce(new Error('bad id')); // second detail fails → skipped
     const ctx = { cfg: dcfg, getHtml: jest.fn(), getJson };
     const res = await SITE_SPECS.domria.fetch!(ctx as any, criteria);
+
+    // search url must carry the resolved Kyiv geo
+    expect(getJson.mock.calls[0][0]).toContain('state_id=10');
+    expect(getJson.mock.calls[0][0]).toContain('city_id=10');
     expect(getJson).toHaveBeenCalledTimes(3); // 1 search + 2 details (one throws)
     expect(res).toHaveLength(1);
     expect(res[0]).toMatchObject({
       id: '1',
-      title: 'Квартира 1',
+      title: '2-кімн., 50 м², Хрещатик',
       price: 9000,
       area: 50,
       city: 'Київ',
+      district: undefined,
       isBusiness: false,
       url: 'https://dom.ria.com/uk/realty-1',
+      imageUrl: 'https://cdn.riastatic.com/photosnew/a/b/p1.jpg',
     });
   });
 });

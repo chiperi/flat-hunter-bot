@@ -5,6 +5,7 @@ const profile = (over: Partial<SearchProfile> = {}): SearchProfile => ({
   id: 'a1',
   userId: 1,
   chatId: 1,
+  source: 'olx',
   name: 'n',
   criteria: { city: 'Київ', ownerOnly: false },
   paused: false,
