@@ -107,9 +107,11 @@ describe('DOM.RIA spec', () => {
     const ctx = { cfg: dcfg, getHtml: jest.fn(), getJson };
     const res = await SITE_SPECS.domria.fetch!(ctx as any, criteria);
 
-    // search url must carry the resolved Kyiv geo
+    // search url must carry the resolved Kyiv geo + the price range (pushed to API)
     expect(getJson.mock.calls[0][0]).toContain('state_id=10');
     expect(getJson.mock.calls[0][0]).toContain('city_id=10');
+    expect(getJson.mock.calls[0][0]).toContain('price_from=5000');
+    expect(getJson.mock.calls[0][0]).toContain('price_to=15000');
     expect(getJson).toHaveBeenCalledTimes(3); // 1 search + 2 details (one throws)
     expect(res).toHaveLength(1);
     expect(res[0]).toMatchObject({
@@ -123,6 +125,23 @@ describe('DOM.RIA spec', () => {
       url: 'https://dom.ria.com/uk/realty-1',
       imageUrl: 'https://cdn.riastatic.com/photos/a/b/p1b.jpg',
     });
+  });
+
+  it('requestKey varies by price so different budgets do not share a fetch', () => {
+    const rk = (over: any) =>
+      SITE_SPECS.domria.requestKey!({ city: 'Київ', operation: 'rent', ownerOnly: false, ...over }, cfg);
+    expect(rk({ priceMin: 80000 })).not.toBe(rk({ priceMin: 20000 }));
+    expect(rk({})).toBe('київ|rent||');
+    expect(rk({ priceMin: 80000, priceMax: 120000 })).toBe('київ|rent|80000|120000');
+  });
+
+  it('omits price params when the criteria has no price bound', async () => {
+    const dcfg = { ...cfg, domria: { ...cfg.domria, apiKey: 'k' } };
+    const getJson = jest.fn().mockResolvedValueOnce({ items: [] });
+    const ctx = { cfg: dcfg, getHtml: jest.fn(), getJson };
+    await SITE_SPECS.domria.fetch!(ctx as any, { city: 'Київ', operation: 'rent', ownerOnly: false });
+    expect(getJson.mock.calls[0][0]).not.toContain('price_from');
+    expect(getJson.mock.calls[0][0]).not.toContain('price_to');
   });
 
   it('converts a foreign-currency price to UAH via priceArr["3"]', async () => {

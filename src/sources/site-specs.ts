@@ -187,10 +187,11 @@ export const domriaCaches = new Map<string, DomriaCache>();
 const domria: SiteSpec = {
   id: 'domria',
   label: 'DOM.RIA',
-  // The search API URL depends only on city (geo) + operation; price/area/rooms
-  // are filtered client-side. So two profiles differing only in those share one
-  // fetch — the scheduler dedups on this key to save API quota.
-  requestKey: (c) => `${(c.city ?? '').trim().toLowerCase()}|${c.operation ?? 'rent'}`,
+  // The search URL depends on city (geo) + operation + PRICE (price is pushed into
+  // the API request — see fetch). Area/rooms are still client-side, so profiles
+  // differing only in those share one fetch. The scheduler dedups on this key.
+  requestKey: (c) =>
+    `${(c.city ?? '').trim().toLowerCase()}|${c.operation ?? 'rent'}|${c.priceMin ?? ''}|${c.priceMax ?? ''}`,
   fetch: async (ctx, c) => {
     const { apiKey, baseUrl } = ctx.cfg.domria;
     if (!apiKey) return []; // no key → nothing to fetch (expected)
@@ -199,14 +200,20 @@ const domria: SiteSpec = {
     if (!geo) return []; // unmapped city → skip rather than flood with all-Ukraine
 
     const op = c.operation === 'sale' ? '1' : '3'; // RIA operation types
-    const cacheKey = `${geo.state}:${geo.city}:${op}`;
+    const priceFrom = c.priceMin != null ? String(c.priceMin) : '';
+    const priceTo = c.priceMax != null ? String(c.priceMax) : '';
+    // Cache is per unique search, so different price ranges don't share ids.
+    const cacheKey = `${geo.state}:${geo.city}:${op}:${priceFrom}:${priceTo}`;
     let cache = domriaCaches.get(cacheKey);
     if (!cache) {
       cache = { known: new Set(), recent: [] };
       domriaCaches.set(cacheKey, cache);
     }
 
-    // 1 search request → newest-first ids.
+    // 1 search request → newest-first ids. Push price into the request: DOM.RIA
+    // filters on the UAH-equivalent (it converts $/€, matching our client-side
+    // priceArr[3] logic), so the limited detail budget lands on listings in the
+    // user's budget instead of random newest ones (verified live).
     const search = new URLSearchParams({
       api_key: apiKey,
       category: '1',
@@ -215,6 +222,8 @@ const domria: SiteSpec = {
       city_id: String(geo.city),
       lang_id: '4',
     });
+    if (priceFrom) search.set('price_from', priceFrom);
+    if (priceTo) search.set('price_to', priceTo);
     const found: any = await ctx.getJson(`${baseUrl}/dom/search?${search.toString()}`);
     const window: string[] = (Array.isArray(found?.items) ? found.items : [])
       .slice(0, DOMRIA_SEARCH_WINDOW)
