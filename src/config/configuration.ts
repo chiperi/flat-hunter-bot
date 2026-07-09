@@ -28,7 +28,6 @@ export interface SourcesConfig {
   maxRetries: number;
   proxyUrl?: string;
   /** Per-site settings. */
-  olx: { baseUrl: string; categoryPath: string };
   domria: { baseUrl: string; apiKey?: string; maxDetails: number };
 }
 
@@ -72,7 +71,7 @@ export default (): AppConfig => {
     );
   }
 
-  // SOURCES=olx,domria,... — default: every known source. Unknown ids dropped.
+  // SOURCES=domria,rieltor — default: every known source. Unknown ids dropped.
   const requested = parseCsv(process.env.SOURCES);
   const known = new Set<string>(KNOWN_SOURCE_IDS);
   const enabled = (requested.length ? requested : [...KNOWN_SOURCE_IDS]).filter((id) =>
@@ -97,10 +96,6 @@ export default (): AppConfig => {
       timeoutMs: parseIntEnv(process.env.SCRAPER_TIMEOUT_MS, 15000),
       maxRetries: parseIntEnv(process.env.SCRAPER_MAX_RETRIES, 3),
       proxyUrl: process.env.HTTP_PROXY_URL?.trim() || undefined,
-      olx: {
-        baseUrl: process.env.OLX_BASE_URL?.trim() || 'https://www.olx.ua',
-        categoryPath: process.env.OLX_CATEGORY_PATH?.trim() || 'uk/nedvizhimost/kvartiry',
-      },
       domria: {
         baseUrl: process.env.DOMRIA_BASE_URL?.trim() || 'https://developers.ria.com',
         apiKey: process.env.DOMRIA_API_KEY?.trim() || undefined,

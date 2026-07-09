@@ -1,8 +1,4 @@
-import {
-  searchSignature,
-  matchesCriteria,
-  defaultProfileName,
-} from './search-profile.model';
+import { matchesCriteria, defaultProfileName } from './search-profile.model';
 import { Listing, SearchCriteria } from '../sources/listing.interface';
 
 const criteria = (over: Partial<SearchCriteria> = {}): SearchCriteria => ({
@@ -19,28 +15,11 @@ const listing = (over: Partial<Listing> = {}): Listing => ({
   area: 45,
   city: 'Київ',
   district: 'Центр',
-  url: 'https://olx.ua/1',
+  url: 'https://rieltor.ua/1',
   isBusiness: false,
-  source: 'olx',
-  sourceLabel: 'OLX',
+  source: 'rieltor',
+  sourceLabel: 'Rieltor',
   ...over,
-});
-
-describe('searchSignature', () => {
-  it('is stable and case-insensitive on city/district', () => {
-    const a = searchSignature(criteria({ city: 'Київ', district: 'Центр' }));
-    const b = searchSignature(criteria({ city: 'київ', district: 'центр' }));
-    expect(a).toBe(b);
-  });
-  it('differs when a filter differs', () => {
-    expect(searchSignature(criteria({ priceMax: 10000 }))).not.toBe(
-      searchSignature(criteria({ priceMax: 20000 })),
-    );
-  });
-  it('encodes the owner flag', () => {
-    expect(searchSignature(criteria({ ownerOnly: true }))).toContain('owner');
-    expect(searchSignature(criteria({ ownerOnly: false }))).toContain('all');
-  });
 });
 
 describe('matchesCriteria', () => {

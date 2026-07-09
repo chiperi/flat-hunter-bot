@@ -38,8 +38,8 @@ async function bootstrap(): Promise<void> {
   installProcessGuards(logger);
 
   // No HTTP server — the bot only makes outbound calls (Telegram long polling +
-  // OLX). An application context runs lifecycle hooks (so nestjs-telegraf
-  // launches the bot) without opening any port.
+  // the listing sites). An application context runs lifecycle hooks (so
+  // nestjs-telegraf launches the bot) without opening any port.
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: logLevels(),
   });

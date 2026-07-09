@@ -27,25 +27,6 @@ export interface SearchProfile {
 }
 
 /**
- * A stable key for the *search itself* (ignoring who owns it / metadata).
- * Two profiles with the same signature hit OLX once per cycle instead of
- * twice — the request-deduplication the brief calls for.
- */
-export function searchSignature(c: SearchCriteria): string {
-  return [
-    c.operation ?? 'rent',
-    c.city.trim().toLowerCase(),
-    (c.district ?? '').trim().toLowerCase(),
-    c.priceMin ?? '',
-    c.priceMax ?? '',
-    c.areaMin ?? '',
-    c.areaMax ?? '',
-    c.rooms ?? '',
-    c.ownerOnly ? 'owner' : 'all',
-  ].join('|');
-}
-
-/**
  * Client-side safety net: even if the scraper's URL filters are imperfect (or
  * a source ignores a param), never notify about something outside the range.
  */

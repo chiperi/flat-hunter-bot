@@ -24,8 +24,8 @@ const listing = (over: Partial<Listing> = {}): Listing => ({
   district: 'Центр',
   url: 'u',
   isBusiness: false,
-  source: 'olx',
-  sourceLabel: 'OLX',
+  source: 'domria',
+  sourceLabel: 'DOM.RIA',
   ...over,
 });
 
@@ -42,7 +42,7 @@ const build = () => {
     notifyPriceChange: jest.fn().mockResolvedValue(undefined),
   };
   const sources = {
-    ids: ['olx'],
+    ids: ['domria'],
     has: jest.fn().mockReturnValue(true),
     fetchOne: jest.fn().mockResolvedValue([]),
     requestKey: jest.fn((_src: string, crit: any) => JSON.stringify(crit)),
@@ -94,14 +94,14 @@ describe('SchedulerService.runCycle', () => {
     seen.getAll.mockResolvedValue(new Map());
     await scheduler.runCycle();
     expect(telegram.notifyNewListing).toHaveBeenCalledTimes(1);
-    expect(seen.markSeen).toHaveBeenCalledWith('p1', 'olx:1', 10000);
+    expect(seen.markSeen).toHaveBeenCalledWith('p1', 'domria:1', 10000);
   });
 
   it('notifies on a price change', async () => {
     const { scheduler, profiles, seen, telegram, sources } = build();
     profiles.listAll.mockResolvedValue([profile()]);
     sources.fetchOne.mockResolvedValue([listing({ id: '1', price: 10000 })]);
-    seen.getAll.mockResolvedValue(new Map([['olx:1', 9000]]));
+    seen.getAll.mockResolvedValue(new Map([['domria:1', 9000]]));
     await scheduler.runCycle();
     expect(telegram.notifyPriceChange).toHaveBeenCalledWith(expect.anything(), expect.anything(), 9000);
     expect(telegram.notifyNewListing).not.toHaveBeenCalled();
@@ -111,7 +111,7 @@ describe('SchedulerService.runCycle', () => {
     const { scheduler, profiles, seen, telegram, sources } = build();
     profiles.listAll.mockResolvedValue([profile()]);
     sources.fetchOne.mockResolvedValue([listing({ id: '1', price: 10000 })]);
-    seen.getAll.mockResolvedValue(new Map([['olx:1', 10000]]));
+    seen.getAll.mockResolvedValue(new Map([['domria:1', 10000]]));
     await scheduler.runCycle();
     expect(telegram.notifyNewListing).not.toHaveBeenCalled();
     expect(telegram.notifyPriceChange).not.toHaveBeenCalled();

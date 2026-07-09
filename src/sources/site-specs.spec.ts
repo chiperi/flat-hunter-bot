@@ -2,7 +2,6 @@ import { SITE_SPECS, domriaCaches } from './site-specs';
 import { SearchCriteria } from './listing.interface';
 
 const cfg: any = {
-  olx: { baseUrl: 'https://www.olx.ua', categoryPath: 'uk/nedvizhimost/kvartiry' },
   domria: { baseUrl: 'https://developers.ria.com', maxDetails: 2, apiKey: undefined },
 };
 
@@ -15,37 +14,6 @@ const criteria: SearchCriteria = {
   areaMax: 60,
   ownerOnly: true,
 };
-
-describe('OLX spec', () => {
-  it('builds a filtered search url', () => {
-    const url = SITE_SPECS.olx.buildUrl!(criteria, cfg);
-    expect(url).toContain('https://www.olx.ua/uk/nedvizhimost/kvartiry/');
-    expect(url).toContain('5000');
-    expect(url).toContain('15000');
-    expect(url).toContain('private');
-  });
-
-  it('parses an offer from __NEXT_DATA__', () => {
-    const offer = {
-      id: 42,
-      title: 'Квартира',
-      url: '/d/uk/obyavlenie/kv-42.html',
-      price: { value: 9000, currency: 'грн' },
-      total_area: '50',
-      location: { city: { name: 'Київ' }, district: { name: 'Центр' } },
-      photos: [],
-      business: false,
-    };
-    const html = `<script id="__NEXT_DATA__">${JSON.stringify({ props: { data: [offer] } })}</script>`;
-    const res = SITE_SPECS.olx.parse!(html, cfg);
-    expect(res).toHaveLength(1);
-    expect(res[0]).toMatchObject({ id: '42', title: 'Квартира', price: 9000, area: 50 });
-  });
-
-  it('returns [] for empty html', () => {
-    expect(SITE_SPECS.olx.parse!('<html></html>', cfg)).toEqual([]);
-  });
-});
 
 describe('Rieltor spec', () => {
   it('builds a rent url with verified filter params', () => {
