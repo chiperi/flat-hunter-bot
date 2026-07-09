@@ -1,83 +1,17 @@
-import { SourcesConfig } from '../config/configuration';
 import { RawListing, SearchCriteria } from './listing.interface';
 import { SiteSpec } from './http-listing-source';
-import {
-  absoluteUrl,
-  CardSelectors,
-  deepFindOffers,
-  extractNextData,
-  mapOffer,
-  parseCards,
-  parseRieltor,
-  toFloat,
-  toInt,
-} from './parsing.util';
+import { absoluteUrl, parseRieltor, toFloat, toInt } from './parsing.util';
 
 /**
- * One spec per tracked site. Three remain: DOM.RIA (official API) and Rieltor
- * (server-rendered HTML) are the live, tuned sources; OLX has a real adapter but
- * Cloudflare-blocks the droplet's datacenter IP (403), so it only runs behind a
- * residential proxy (`HTTP_PROXY_URL`).
+ * One spec per tracked site: DOM.RIA (official API) and Rieltor (server-rendered
+ * HTML) — both live and tuned.
  *
- * ⚠️ The HTML parsers are BEST-EFFORT — markup drifts, so they're all defensive
- * (return [] on mismatch) and expected to be tuned against the live site.
+ * ⚠️ Rieltor's parser is best-effort — markup drifts, so it's defensive (returns
+ * [] on mismatch) and expected to be tuned against the live site.
  */
 
-/** Shared "try __NEXT_DATA__ JSON, then fall back to HTML cards" parser. */
-function nextDataThenCards(html: string, baseUrl: string, cards: CardSelectors): RawListing[] {
-  const data = extractNextData(html);
-  if (data) {
-    const offers = deepFindOffers(data)
-      .map((o) => mapOffer(o, baseUrl))
-      .filter((l): l is RawListing => l !== null);
-    if (offers.length) return offers;
-  }
-  return parseCards(html, cards, baseUrl);
-}
-
-function priceAreaQuery(c: SearchCriteria, names: Record<string, string>): URLSearchParams {
-  const p = new URLSearchParams();
-  const loc = [c.city, c.district].filter(Boolean).join(' ').trim();
-  if (loc && names.q) p.set(names.q, loc);
-  if (c.priceMin != null && names.priceMin) p.set(names.priceMin, String(c.priceMin));
-  if (c.priceMax != null && names.priceMax) p.set(names.priceMax, String(c.priceMax));
-  if (c.areaMin != null && names.areaMin) p.set(names.areaMin, String(c.areaMin));
-  if (c.areaMax != null && names.areaMax) p.set(names.areaMax, String(c.areaMax));
-  return p;
-}
-
-// --- OLX (well-trodden: __NEXT_DATA__ then cards) --------------------------
-const olx: SiteSpec = {
-  id: 'olx',
-  label: 'OLX',
-  kind: 'html',
-  buildUrl: (c, cfg) => {
-    const base = cfg.olx.baseUrl.replace(/\/+$/, '');
-    const path = cfg.olx.categoryPath.replace(/^\/+|\/+$/g, '');
-    const p = new URLSearchParams();
-    const q = [c.city, c.district].filter(Boolean).join(' ').trim();
-    if (q) p.set('q', q);
-    if (c.priceMin != null) p.set('search[filter_float_price:from]', String(c.priceMin));
-    if (c.priceMax != null) p.set('search[filter_float_price:to]', String(c.priceMax));
-    if (c.areaMin != null) p.set('search[filter_float_total_area:from]', String(c.areaMin));
-    if (c.areaMax != null) p.set('search[filter_float_total_area:to]', String(c.areaMax));
-    if (c.ownerOnly) p.set('search[private_business]', 'private');
-    p.set('search[order]', 'created_at:desc');
-    return `${base}/${path}/?${p.toString()}`;
-  },
-  parse: (html, cfg) =>
-    nextDataThenCards(html, cfg.olx.baseUrl, {
-      card: '[data-cy="l-card"]',
-      title: '[data-cy="ad-card-title"], h6, h4',
-      price: '[data-testid="ad-price"]',
-      link: 'a[href]',
-      image: 'img',
-      location: '[data-testid="location-date"]',
-    }),
-};
-
 // --- rieltor.ua ------------------------------------------------------------
-// Server-rendered HTML (not Next.js); reachable from the droplet (unlike OLX).
+// Server-rendered HTML (not Next.js); reachable from the droplet.
 // URL filters are real and verified live: price_min/price_max, rooms=N (exact
 // 1–3), f-owners=1. Area has no working URL param → filtered client-side. City
 // is Kyiv-only for now (the default flats-rent/ path). Newest-first, ~20 cards.
@@ -255,7 +189,6 @@ const domria: SiteSpec = {
 
 /** All specs, keyed by id — the module builds a source per ENABLED id. */
 export const SITE_SPECS: Record<string, SiteSpec> = {
-  olx,
   rieltor,
   domria,
 };

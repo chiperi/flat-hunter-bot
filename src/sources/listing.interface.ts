@@ -1,8 +1,6 @@
 /**
- * Source-agnostic listing + search types shared across the whole app.
- *
- * This replaces the old OLX-specific `OlxListing`/`SearchCriteria`. OLX is now
- * just one of several `ListingSource`s (see listing-source.interface.ts).
+ * Source-agnostic listing + search types shared across the whole app. Each site
+ * is one `ListingSource` (see listing-source.interface.ts).
  */
 
 /** The filter fields a user defines — both the profile criteria and the query
@@ -15,7 +13,7 @@ export interface SearchCriteria {
   areaMin?: number;
   areaMax?: number;
   /** true = private-owner listings only; false = include agencies/realtors.
-   *  Used by sources that expose it (e.g. OLX); ignored otherwise. */
+   *  Used by sources that expose it (e.g. Rieltor); ignored otherwise. */
   ownerOnly: boolean;
   /** rent (long-term) vs sale — a per-site field (DOM.RIA). Defaults to rent. */
   operation?: 'rent' | 'sale';
@@ -44,9 +42,9 @@ export interface RawListing {
 
 /** A listing tagged with which site it came from. */
 export interface Listing extends RawListing {
-  /** Source id, e.g. 'olx', 'domria'. */
+  /** Source id, e.g. 'domria', 'rieltor'. */
   source: string;
-  /** Human label for messages, e.g. 'OLX', 'DOM.RIA'. */
+  /** Human label for messages, e.g. 'DOM.RIA', 'Rieltor'. */
   sourceLabel: string;
 }
 
@@ -59,16 +57,14 @@ export function listingKey(l: Pick<Listing, 'source' | 'id'>): string {
   return `${l.source}:${l.id}`;
 }
 
-// Only three sources remain. domria + rieltor are live. olx has a real adapter
-// but Cloudflare-blocks the droplet's datacenter IP (403) — it enables once
-// HTTP_PROXY_URL points at a residential proxy. (birdrent/josti were app-only
-// with no web catalog; lun/flatfy were LUN aggregators, also 403 and redundant.)
+// Two sources: both live. (Others were evaluated and dropped — OLX/lun/flatfy
+// Cloudflare-block the droplet's datacenter IP; birdrent/josti are app-only with
+// no web catalog.)
 /** Every site this build knows about, in default priority order. */
-export const KNOWN_SOURCE_IDS = ['olx', 'rieltor', 'domria'] as const;
+export const KNOWN_SOURCE_IDS = ['domria', 'rieltor'] as const;
 
 /** Display labels per source id (for messages that only have the id). */
 export const SOURCE_LABELS: Record<string, string> = {
-  olx: 'OLX',
-  rieltor: 'Rieltor',
   domria: 'DOM.RIA',
+  rieltor: 'Rieltor',
 };

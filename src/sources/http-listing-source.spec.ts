@@ -14,7 +14,6 @@ const cfg = (over: Record<string, unknown> = {}): any => ({
   timeoutMs: 1000,
   maxRetries: 0,
   proxyUrl: undefined,
-  olx: { baseUrl: 'https://www.olx.ua', categoryPath: 'x' },
   domria: { baseUrl: 'https://d', maxDetails: 10 },
   ...over,
 });

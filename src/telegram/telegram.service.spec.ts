@@ -21,11 +21,11 @@ const listing = (over: Partial<Listing> = {}): Listing => ({
   area: 45,
   city: 'Київ',
   district: 'Центр',
-  url: 'https://olx.ua/1',
+  url: 'https://rieltor.ua/1',
   imageUrl: 'https://img/1.jpg',
   isBusiness: false,
-  source: 'olx',
-  sourceLabel: 'OLX',
+  source: 'rieltor',
+  sourceLabel: 'Rieltor',
   ...over,
 });
 
@@ -57,7 +57,7 @@ describe('TelegramService', () => {
     const [chatId, , extra] = bot.telegram.sendPhoto.mock.calls[0];
     expect(chatId).toBe(55);
     expect(extra.caption).toContain('Нове оголошення');
-    expect(extra.caption).toContain('OLX');
+    expect(extra.caption).toContain('Rieltor');
     expect(extra.caption).toContain('12'); // formatted price
   });
 

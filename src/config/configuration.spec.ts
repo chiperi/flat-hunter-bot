@@ -26,8 +26,8 @@ describe('configuration', () => {
     delete process.env.SOURCES;
     delete process.env.ALLOWED_USER_IDS;
     const cfg = configuration();
-    expect(cfg.sources.enabled).toEqual(['olx', 'rieltor', 'domria']);
-    expect(cfg.redis.keyPrefix).toBe('olx');
+    expect(cfg.sources.enabled).toEqual(['domria', 'rieltor']);
+    expect(cfg.redis.keyPrefix).toBe('olx'); // legacy Redis namespace (not a source)
     expect(cfg.polling.intervalMs).toBe(300000);
     expect(cfg.telegram.allowedUserIds).toEqual([]);
     expect(cfg.sources.domria.maxDetails).toBe(10);
@@ -36,10 +36,10 @@ describe('configuration', () => {
   it('parses allowlist and sources (dropping unknown ids)', () => {
     process.env.TELEGRAM_BOT_TOKEN = VALID_TOKEN;
     process.env.ALLOWED_USER_IDS = '1, 2 ,x,3';
-    process.env.SOURCES = 'olx, unknown ,domria';
+    process.env.SOURCES = 'rieltor, unknown ,domria';
     const cfg = configuration();
     expect(cfg.telegram.allowedUserIds).toEqual([1, 2, 3]);
-    expect(cfg.sources.enabled).toEqual(['olx', 'domria']);
+    expect(cfg.sources.enabled).toEqual(['rieltor', 'domria']);
   });
 
   it('reads DOM.RIA + proxy settings', () => {

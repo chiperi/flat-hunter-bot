@@ -11,9 +11,9 @@ export const LISTING_SOURCES = Symbol('LISTING_SOURCES');
  * take down the polling loop or the other sources.
  */
 export interface ListingSource {
-  /** Stable id, e.g. 'olx'. */
+  /** Stable id, e.g. 'domria'. */
   readonly id: string;
-  /** Human label for notifications, e.g. 'OLX'. */
+  /** Human label for notifications, e.g. 'DOM.RIA'. */
   readonly label: string;
   fetchListings(criteria: SearchCriteria): Promise<Listing[]>;
   /**
