@@ -15,7 +15,8 @@ describe('parseRange', () => {
     ['від 5000', { min: 5000 }],
     ['-15000', { max: 15000 }],
     ['5000-', { min: 5000 }],
-    ['5000', { min: 5000 }],
+    ['5000', { max: 5000 }], // lone number = "до" (upper bound)
+    ['80000', { max: 80000 }],
     ['15000-5000', { min: 5000, max: 15000 }], // reversed → swapped
     ['30–60', { min: 30, max: 60 }], // en-dash
   ])('parses %s', (input, expected) => {

@@ -29,7 +29,7 @@ export interface ParsedRange {
  *   "до 15000"    -> {max:15000}
  *   "-15000"      -> {max:15000}
  *   "5000-"       -> {min:5000}
- *   "5000"        -> {min:5000}               (lone number = lower bound)
+ *   "5000"        -> {max:5000}               (lone number = upper bound / "до")
  *   "-" / "будь-яка" / "" -> {}               (no constraint)
  */
 export function parseRange(text: string): ParsedRange {
@@ -46,8 +46,11 @@ export function parseRange(text: string): ParsedRange {
     return { min, max };
   }
 
-  const wantsMax = s.startsWith('-') || (/до/.test(s) && !/від/.test(s));
-  return wantsMax ? { max: nums[0] } : { min: nums[0] };
+  // Single number → a MAXIMUM ("до") by default: the quick-pick buttons are all
+  // "до X" and a budget is normally an upper bound. Only an explicit "від X" or a
+  // trailing dash ("5000-") makes it a minimum.
+  const isMin = /від/.test(s) || /\d-$/.test(s);
+  return isMin ? { min: nums[0] } : { max: nums[0] };
 }
 
 export const OWNER_ONLY_LABEL = '🔑 Тільки власники';
