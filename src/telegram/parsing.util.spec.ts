@@ -1,11 +1,4 @@
-import {
-  parseRange,
-  isNoConstraint,
-  parseOwnerChoice,
-  parseOptionalText,
-  OWNER_ONLY_LABEL,
-  INCLUDE_ALL_LABEL,
-} from './parsing.util';
+import { parseRange, isNoConstraint } from './parsing.util';
 
 describe('parseRange', () => {
   it.each([
@@ -49,31 +42,3 @@ describe('isNoConstraint', () => {
   });
 });
 
-describe('parseOwnerChoice', () => {
-  it.each([OWNER_ONLY_LABEL, 'Тільки власники', 'так', 'yes', '1', 'y'])(
-    'returns true for %s',
-    (input) => {
-      expect(parseOwnerChoice(input)).toBe(true);
-    },
-  );
-
-  it.each([INCLUDE_ALL_LABEL, 'усі', 'з ріелторами', 'ні', 'no', '2', 'n', 'агент'])(
-    'returns false for %s',
-    (input) => {
-      expect(parseOwnerChoice(input)).toBe(false);
-    },
-  );
-
-  it.each(['', 'щось геть інше', 'maybe'])('returns null for unrecognized %s', (input) => {
-    expect(parseOwnerChoice(input)).toBeNull();
-  });
-});
-
-describe('parseOptionalText', () => {
-  it('returns trimmed text', () => {
-    expect(parseOptionalText('  Центр ')).toBe('Центр');
-  });
-  it.each(['', '-', 'будь-яка', 'skip'])('returns undefined for %s', (input) => {
-    expect(parseOptionalText(input)).toBeUndefined();
-  });
-});

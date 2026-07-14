@@ -28,32 +28,26 @@ describe('SourceRegistry', () => {
     expect(reg.count).toBe(2);
   });
 
-  it('merges listings from all sources', async () => {
-    const reg = new SourceRegistry([
-      src('a', async () => [listing('1', 'a')]),
-      src('c', async () => [listing('2', 'c'), listing('3', 'c')]),
-    ]);
-    const all = await reg.fetchAll(criteria);
-    expect(all).toHaveLength(3);
-    expect(all.map((l) => l.source).sort()).toEqual(['a', 'c', 'c']);
+  it('fetchOne returns a source\'s listings', async () => {
+    const reg = new SourceRegistry([src('a', async () => [listing('1', 'a'), listing('2', 'a')])]);
+    const res = await reg.fetchOne('a', criteria);
+    expect(res).toHaveLength(2);
+    expect(res.map((l) => l.source)).toEqual(['a', 'a']);
   });
 
-  it('isolates a throwing source without failing the rest', async () => {
+  it('fetchOne isolates a throwing source (returns [])', async () => {
     const reg = new SourceRegistry([
-      src('a', async () => [listing('1', 'a')]),
       src('b', async () => {
         throw new Error('boom');
       }),
     ]);
-    const all = await reg.fetchAll(criteria);
-    expect(all).toHaveLength(1);
-    expect(all[0].source).toBe('a');
+    await expect(reg.fetchOne('b', criteria)).resolves.toEqual([]);
   });
 
-  it('handles an empty registry', async () => {
+  it('fetchOne returns [] for an unknown source / empty registry', async () => {
     const reg = new SourceRegistry([]);
     expect(reg.count).toBe(0);
-    await expect(reg.fetchAll(criteria)).resolves.toEqual([]);
+    await expect(reg.fetchOne('x', criteria)).resolves.toEqual([]);
   });
 
   it('exposes ids and has()', () => {

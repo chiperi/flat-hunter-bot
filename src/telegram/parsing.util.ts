@@ -57,38 +57,3 @@ export function parseRange(text: string): ParsedRange {
 export function isNoConstraint(text: string): boolean {
   return SKIP_WORDS.has((text ?? '').trim().toLowerCase());
 }
-
-export const OWNER_ONLY_LABEL = '🔑 Тільки власники';
-export const INCLUDE_ALL_LABEL = '🏢 Усі (з ріелторами)';
-
-/**
- * Interpret the owner/realtor choice. Returns null when the input is
- * unrecognized so the wizard can re-ask instead of guessing.
- */
-export function parseOwnerChoice(text: string): boolean | null {
-  const t = (text ?? '').trim().toLowerCase();
-  if (!t) return null;
-  if (t.includes('власник')) return true;
-  if (t === 'так' || t === 'yes' || t === '1' || t === 'y') return true;
-  if (
-    t.includes('усі') ||
-    t.includes('всі') ||
-    t.includes('рієлт') ||
-    t.includes('ріелт') ||
-    t.includes('агент') ||
-    t === 'ні' ||
-    t === 'no' ||
-    t === '2' ||
-    t === 'n'
-  ) {
-    return false;
-  }
-  return null;
-}
-
-/** A city/district free-text value; empty or a skip word means "unset". */
-export function parseOptionalText(text: string): string | undefined {
-  const t = (text ?? '').trim();
-  if (!t || SKIP_WORDS.has(t.toLowerCase())) return undefined;
-  return t;
-}

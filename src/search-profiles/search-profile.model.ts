@@ -45,7 +45,7 @@ export function matchesCriteria(listing: Listing, c: SearchCriteria): boolean {
   }
 
   // Rooms: c.rooms of 4 means "4+"; otherwise an exact match.
-  if (c.rooms != null && listing.rooms != null && listing.rooms !== undefined) {
+  if (c.rooms != null && listing.rooms != null) {
     if (c.rooms >= 4 ? listing.rooms < 4 : listing.rooms !== c.rooms) return false;
   }
 

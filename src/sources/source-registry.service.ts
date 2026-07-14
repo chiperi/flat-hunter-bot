@@ -55,18 +55,4 @@ export class SourceRegistry {
       return [];
     }
   }
-
-  async fetchAll(criteria: SearchCriteria): Promise<Listing[]> {
-    const perSource = await Promise.all(
-      this.sources.map(async (s) => {
-        try {
-          return await s.fetchListings(criteria);
-        } catch (err) {
-          this.logger.warn(`Source ${s.id} threw: ${(err as Error).message}`);
-          return [] as Listing[];
-        }
-      }),
-    );
-    return perSource.flat();
-  }
 }
