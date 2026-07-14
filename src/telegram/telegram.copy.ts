@@ -26,12 +26,19 @@ export const HELP = WELCOME;
 
 export const CANCELLED = '❌ Скасовано. Нічого не збережено.';
 
-/** Escape the three characters that matter for Telegram HTML parse mode. */
+/**
+ * Escape for Telegram HTML parse mode. Includes `"` (→ `&quot;`) because esc()'s
+ * output is also used inside `href="..."` attributes (telegram.service.ts); a
+ * scraped URL with a literal quote would otherwise break the tag and fail the
+ * send permanently (the scheduler retries the same bad URL forever). `&quot;`
+ * renders correctly in text context too, so escaping it everywhere is safe.
+ */
 export function esc(input: unknown): string {
   return String(input ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function fmtRange(min?: number, max?: number, unit = ''): string {

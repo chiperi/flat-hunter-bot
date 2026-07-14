@@ -17,6 +17,9 @@ describe('esc', () => {
   it('escapes HTML-significant characters', () => {
     expect(esc('<b>&</b>')).toBe('&lt;b&gt;&amp;&lt;/b&gt;');
   });
+  it('escapes double quotes (used inside href="...")', () => {
+    expect(esc('https://x.com/a?q="1"')).toBe('https://x.com/a?q=&quot;1&quot;');
+  });
   it('stringifies non-strings and nullish', () => {
     expect(esc(123)).toBe('123');
     expect(esc(null)).toBe('');
