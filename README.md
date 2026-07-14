@@ -339,9 +339,9 @@ push/PR.
 
 ## Known limitations / next steps
 
-- **Only DOM.RIA is wired to the wizard.** The other sources exist in the engine
-  but their HTML parsers need tuning against the live sites and no wizard flow
-  drives them yet. The `ListingSource` interface keeps adding them isolated.
+- **Two live sources (DOM.RIA + Rieltor).** One filter per user is queried across
+  both; OLX/lun/flatfy have adapters but 403 from the droplet's datacenter IP and
+  need a residential proxy. The `ListingSource` interface keeps adding them isolated.
 - **DOM.RIA filtering** is city + price + area + rooms (Kyiv geo mapped; add
   more cities as needed). Raion-level filtering is a follow-up — RIA's district
   is a neighbourhood, not the admin raion the wizard offers.

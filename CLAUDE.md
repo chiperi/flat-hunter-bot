@@ -3,7 +3,16 @@
 Repo: `flat-hunter-bot`
 
 ## Goal
-Build a Telegram bot that monitors OLX housing listings against user-defined filters and sends instant notifications when new matching listings appear.
+Build a Telegram bot that monitors Ukrainian rental-housing listings against user-defined filters and sends instant notifications when new matching listings appear.
+
+## Current state (updated after implementation — this section wins where it contradicts the original brief below)
+The brief below is the **original** spec; the shipped design has since evolved. Where they conflict, follow this:
+- **Sources:** live = **DOM.RIA** (official API) + **Rieltor** (server-rendered HTML). OLX / lun / flatfy have adapters but Cloudflare-block the droplet's datacenter IP (403) — they need a residential proxy (`HTTP_PROXY_URL`); OLX was later removed entirely. birdrent / josti were app-only (no web catalog) and dropped. So it is **not** an "OLX bot" — the OLX references throughout the brief are historical.
+- **One filter per user, across all sites** — NOT multiple independent profiles. `/newsearch` upserts a single profile that is queried against every enabled source; each alert is tagged with its source. (The "Multiple profiles per user" requirement below is superseded.)
+- **Wizard steps:** operation (rent/sale) → city (**Kyiv only** for now) → rooms → price → area. There is **no** district step and **no** owner-only toggle step (the `district`/`ownerOnly` criteria fields exist but the wizard doesn't collect them).
+- **Prices are normalized to UAH** (DOM.RIA via `priceArr`, Rieltor via the NBU-equivalent in the card); listings with no price are excluded.
+- **`REDIS_KEY_PREFIX` defaults to `olx`** — a legacy namespace from the project's original name, **not** a source. ⚠️ Renaming it orphans all live Redis data (profiles + seen-hashes); treat a change as a data migration, not an env edit.
+- Everything else (Redis-only, Docker isolation, no ports, long polling, allowlist, deploy pattern) matches the brief.
 
 ## Deployment context (read first)
 - This runs on an existing DigitalOcean droplet that already hosts another project (`aurora`, under `/opt/aurora/`).
