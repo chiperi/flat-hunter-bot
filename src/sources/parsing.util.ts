@@ -69,6 +69,21 @@ export function parseRieltor(html: string, baseUrl = 'https://rieltor.ua'): RawL
 
       const subtitle = card.find('.catalog-card-author-subtitle').first().text().toLowerCase();
 
+      // Price in UAH. Rent is quoted in грн (data-label "20 000 грн"); sale is
+      // quoted in $/€ ("185 000 $"), and rieltor puts the hryvnia equivalent in
+      // the price-title's title attr ("По курсу НБУ - 8 306 389грн / …/м²").
+      // Use that so we never mislabel a foreign price as грн (cf. C-1).
+      const priceTitle = card.find('.catalog-card-price-title').first();
+      const label = (card.attr('data-label') || priceTitle.text() || '').trim();
+      let price: number | null;
+      if (/грн/i.test(label)) {
+        price = toInt(label);
+      } else {
+        // First "<num> грн" in the title is the full UAH price (per-m² comes after "/").
+        const nbu = (priceTitle.attr('title') || '').match(/([\d\s  ]+)грн/);
+        price = nbu ? toInt(nbu[1]) : null; // no UAH figure → no price, never a wrong one
+      }
+
       const title =
         [
           rooms ? `${rooms}-кімн.` : null,
@@ -81,7 +96,7 @@ export function parseRieltor(html: string, baseUrl = 'https://rieltor.ua'): RawL
       out.push({
         id,
         title,
-        price: toInt(card.attr('data-label') || card.find('.catalog-card-price-title').first().text()),
+        price,
         currency: 'грн',
         area: area === null ? null : Math.round(area),
         rooms,
