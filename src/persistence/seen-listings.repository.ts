@@ -51,12 +51,6 @@ export class SeenListingsRepository {
     return map;
   }
 
-  /** True if this profile has never recorded anything (fresh / not primed). */
-  async isEmpty(profileId: string): Promise<boolean> {
-    const len = await this.redis.hlen(this.seenKey(profileId));
-    return len === 0;
-  }
-
   /** Record/refresh a single listing's price. Called AFTER a successful send. */
   async markSeen(profileId: string, listingId: string, price: number | null): Promise<void> {
     await this.redis.hset(this.seenKey(profileId), listingId, this.encode(price));

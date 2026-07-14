@@ -26,12 +26,6 @@ describe('SeenListingsRepository', () => {
     expect((await repo.getAll('p')).get('l3')).toBeNull();
   });
 
-  it('isEmpty reflects presence', async () => {
-    expect(await repo.isEmpty('p')).toBe(true);
-    await repo.markSeen('p', 'l', 1);
-    expect(await repo.isEmpty('p')).toBe(false);
-  });
-
   it('seed writes many at once; clear empties', async () => {
     await repo.seed('p', [
       { id: 'a', price: 1 },
@@ -39,11 +33,11 @@ describe('SeenListingsRepository', () => {
     ]);
     expect((await repo.getAll('p')).size).toBe(2);
     await repo.clear('p');
-    expect(await repo.isEmpty('p')).toBe(true);
+    expect((await repo.getAll('p')).size).toBe(0);
   });
 
   it('seed([]) is a no-op', async () => {
     await repo.seed('p', []);
-    expect(await repo.isEmpty('p')).toBe(true);
+    expect((await repo.getAll('p')).size).toBe(0);
   });
 });
