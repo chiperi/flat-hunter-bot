@@ -30,6 +30,7 @@ const listing = (over: Partial<Listing> = {}): Listing => ({
 });
 
 const makeBot = () => ({
+  catch: jest.fn(),
   telegram: {
     sendMessage: jest.fn().mockResolvedValue(undefined),
     sendPhoto: jest.fn().mockResolvedValue(undefined),
@@ -38,10 +39,11 @@ const makeBot = () => ({
 });
 
 describe('TelegramService', () => {
-  it('registers the command menu on bootstrap', async () => {
+  it('registers the command menu + a global error boundary on bootstrap', async () => {
     const bot = makeBot();
     await new TelegramService(bot as any).onApplicationBootstrap();
     expect(bot.telegram.setMyCommands).toHaveBeenCalled();
+    expect(bot.catch).toHaveBeenCalled(); // one user's error can't crash the bot
   });
 
   it('swallows setMyCommands failures', async () => {

@@ -42,12 +42,17 @@ export class TelegramUpdate {
     }
     await ctx.reply(`У вас <b>${list.length}</b> пошук(ів):`, { parse_mode: 'HTML' });
     // One message per profile so each carries its own manage buttons and can be
-    // edited independently when toggled/deleted.
+    // edited independently when toggled/deleted. Isolate each send so one failed
+    // reply (blocked bot, bad markup) doesn't abort the rest of the list.
     for (const p of list) {
-      await ctx.reply(describeProfile(p), {
-        parse_mode: 'HTML',
-        ...this.profileKeyboard(p),
-      });
+      try {
+        await ctx.reply(describeProfile(p), {
+          parse_mode: 'HTML',
+          ...this.profileKeyboard(p),
+        });
+      } catch (err) {
+        this.logger.warn(`mysearches: failed to send profile ${p.id}: ${(err as Error).message}`);
+      }
     }
   }
 

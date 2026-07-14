@@ -26,6 +26,16 @@ export class TelegramService implements OnApplicationBootstrap {
    * failure here must never block the bot from running.
    */
   async onApplicationBootstrap(): Promise<void> {
+    // Global error boundary: contain any throw from a command/action/wizard step
+    // so one user's bad interaction is logged, not propagated to the process-wide
+    // unhandledRejection guard (which would exit). Resilience req: one user's
+    // Telegram error must not take the bot down for everyone.
+    this.bot.catch((err, ctx) => {
+      this.logger.error(
+        `Handler error (update=${ctx?.updateType}, chat=${ctx?.chat?.id}): ${(err as Error).message}`,
+      );
+    });
+
     try {
       await this.bot.telegram.setMyCommands([
         { command: 'newsearch', description: '🔎 Новий пошук' },
