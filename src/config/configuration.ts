@@ -85,6 +85,9 @@ export default (): AppConfig => {
     },
     redis: {
       url: process.env.REDIS_URL?.trim() || 'redis://127.0.0.1:6379',
+      // ⚠️ Legacy namespace from the project's original name — NOT the OLX source.
+      // Every key is `olx:profile:*` / `olx:seen:*`. Changing this orphans all
+      // existing profiles + seen-hashes: it's a data migration, not an env edit.
       keyPrefix: process.env.REDIS_KEY_PREFIX?.trim() || 'olx',
     },
     polling: {

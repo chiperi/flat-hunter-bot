@@ -27,5 +27,5 @@ COPY --chown=node:node package.json ./
 USER node
 
 # No ports exposed on purpose — the bot only makes outbound calls
-# (Telegram long polling + OLX). Nothing to EXPOSE.
+# (Telegram long polling + the listing sites). Nothing to EXPOSE.
 CMD ["node", "dist/main.js"]
