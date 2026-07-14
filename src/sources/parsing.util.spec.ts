@@ -60,6 +60,22 @@ describe('parseRieltor', () => {
       <div class="catalog-card-details"><span>1-кімнатна</span><span>45 м²</span></div>
       <div class="catalog-card-author"><div class="catalog-card-author-subtitle">Власник</div></div>
     </div>`;
+  // Sale card: price quoted in USD, UAH equivalent only in the price-title's title attr.
+  const saleCard = `
+    <div class="catalog-card " data-catalog-item-id="333" data-label="185 000 $">
+      <a href="https://rieltor.ua/flats-sale/view/333/" class="catalog-card-media"></a>
+      <div class="catalog-card-price">
+        <strong class="catalog-card-price-title" title="По курсу НБУ - 8 306 389грн / 88 366 грн/м²">185 000 $</strong>
+      </div>
+      <div class="catalog-card-region"><a>Київ</a>, <a>Шевченківський р-н</a></div>
+      <div class="catalog-card-details"><span>3 кімнати</span><span>94 м²</span></div>
+      <div class="catalog-card-author"><div class="catalog-card-author-subtitle">Рієлтор</div></div>
+    </div>`;
+  // Foreign price with no UAH equivalent anywhere → must not be mislabelled.
+  const saleNoUah = `
+    <div class="catalog-card " data-catalog-item-id="444" data-label="90 000 $">
+      <div class="catalog-card-price"><strong class="catalog-card-price-title">90 000 $</strong></div>
+    </div>`;
 
   it('parses a realtor card: price/area/rooms/district/business', () => {
     const [l] = parseRieltor(`<html>${realtorCard}</html>`);
@@ -82,6 +98,17 @@ describe('parseRieltor', () => {
     const [l] = parseRieltor(`<html>${ownerCard}</html>`);
     expect(l).toMatchObject({ id: '222', price: 12500, area: 45, rooms: 1, isBusiness: false });
     expect(l.district).toBeUndefined();
+  });
+
+  it('uses the NBU hryvnia equivalent for a USD sale price (not the $ digits)', () => {
+    const [l] = parseRieltor(`<html>${saleCard}</html>`);
+    expect(l).toMatchObject({ id: '333', price: 8306389, currency: 'грн' }); // not 185000
+    expect(l.district).toBe('Шевченківський р-н');
+  });
+
+  it('yields no price for a foreign amount with no UAH equivalent (never mislabels)', () => {
+    const [l] = parseRieltor(`<html>${saleNoUah}</html>`);
+    expect(l.price).toBeNull();
   });
 
   it('parses multiple cards and skips ones without an id', () => {
