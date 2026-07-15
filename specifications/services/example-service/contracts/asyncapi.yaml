@@ -1,0 +1,19 @@
+asyncapi: 3.0.0
+info:
+  title: example-service events
+  version: 0.1.0
+channels:
+  userCreated:
+    address: user.created
+    messages:
+      userCreated:
+        payload:
+          type: object
+          properties:
+            id: { type: string }
+            createdAt: { type: string, format: date-time }
+operations:
+  publishUserCreated:
+    action: send
+    channel:
+      $ref: '#/channels/userCreated'

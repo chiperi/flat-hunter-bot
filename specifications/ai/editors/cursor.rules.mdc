@@ -1,0 +1,7 @@
+---
+description: Приклад правила Cursor
+globs: ["**/*"]
+alwaysApply: true
+---
+
+<правила для Cursor>

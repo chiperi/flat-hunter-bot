@@ -1,0 +1,7 @@
+# Крос-платформний task-runner (just). Аналоги: Makefile / Taskfile.yml
+# install:
+#     <install>
+# test:
+#     <test>
+# lint:
+#     <lint>

@@ -1,0 +1,10 @@
+name: security
+on: [push, pull_request]
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # - SAST (semgrep / codeql)
+      # - SCA (dependency scan)
+      # - secret-scan (gitleaks)

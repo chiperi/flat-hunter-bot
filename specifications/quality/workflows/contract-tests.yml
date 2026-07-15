@@ -1,0 +1,8 @@
+name: contract-tests
+on: [push, pull_request]
+jobs:
+  pact:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # - provider/consumer contract verification (Pact)

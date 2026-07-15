@@ -1,0 +1,13 @@
+name: quality-gates
+on: [push, pull_request]
+jobs:
+  checks:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      # - lint
+      # - type-check
+      # - test + coverage
