@@ -161,7 +161,7 @@ npm install
 # 2. Configure
 cp .env.example .env
 #   set TELEGRAM_BOT_TOKEN and ALLOWED_USER_IDS (at minimum)
-#   set DOMRIA_API_KEY for real DOM.RIA data (SOURCES=domria)
+#   set DOMRIA_API_KEY for real DOM.RIA data (default SOURCES=domria,rieltor)
 #   set REDIS_URL=redis://127.0.0.1:6379 for a local redis
 
 # 3. Run (watch mode)
@@ -351,3 +351,9 @@ push/PR.
   `/mysearches` also has Pause/Resume/Delete.
 - **In-memory wizard session** — an interrupted `/newsearch` (e.g. bot restart
   mid-wizard) is simply restarted; saved profiles are unaffected (they're in Redis).
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE). © 2026 Elena Chiperi.

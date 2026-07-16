@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Telegram bot that monitors Ukrainian rental listings (DOM.RIA + Rieltor) against a per-user filter and sends instant notifications on new / price-changed listings.",
   "license": "MIT",
+  "author": "Elena Chiperi",
   "private": true,
   "engines": {
     "node": ">=20"
