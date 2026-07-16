@@ -1,9 +1,0 @@
-name: openapi-validation
-on: [push, pull_request]
-jobs:
-  validate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      # - spectral lint (.spectral.yaml)
-      # - oasdiff breaking-change check

@@ -1,8 +1,0 @@
-# Ті самі перевірки локально до коміту
-# repos:
-#   - repo: local
-#     hooks:
-#       - id: lint
-#         name: lint
-#         entry: <lint cmd>
-#         language: system
