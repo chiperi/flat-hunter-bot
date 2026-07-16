@@ -1,5 +1,9 @@
 # Flat Hunter Bot 🏠🔎
 
+[![CI / Deploy](https://github.com/chiperi/flat-hunter-bot/actions/workflows/deploy.yml/badge.svg)](https://github.com/chiperi/flat-hunter-bot/actions/workflows/deploy.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%E2%89%A520-brightgreen.svg)](package.json)
+
 A Telegram bot that monitors **Ukrainian housing sites** against a user-defined
 filter and sends **instant notifications** when a new matching listing appears —
 or when the price of one you've already seen changes. You set the criteria once
@@ -10,6 +14,13 @@ sources — both queried directly from the droplet, no proxy needed.
 Built with **NestJS + TypeScript**, **Telegraf** (long polling, no webhook) and
 **Redis** for all state. Runs as an isolated Docker Compose stack with **no
 inbound ports** — it only makes outbound calls to Telegram and the housing sites.
+
+> **⚠️ Responsible-use disclaimer.** This is a personal / educational project for a private,
+> allowlisted group. It reads third-party listing sites (one via an official API, one via HTML):
+> respect each site's Terms of Service, `robots.txt`, and rate limits, keep request volume low, and
+> **do not** use it for mass scraping or commercial redistribution. The operator is responsible for
+> compliance (incl. GDPR — the bot stores no seller personal data, only ids/price/area/link).
+> Provided **as is, without warranty** — see [LICENSE](LICENSE).
 
 ---
 
